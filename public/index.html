@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تطبيق السؤال المعرفي</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header><h1>📚 تطبيق السؤال المعرفي</h1></header>
+  <main>
+    <div class="card login-box">
+      <h2>تسجيل الدخول</h2>
+      <div class="role-toggle">
+        <button id="role-student" class="active">👨‍🎓 طالب</button>
+        <button id="role-teacher">👨‍🏫 أستاذ</button>
+      </div>
+      <input type="text" id="name" placeholder="اكتب اسمك الكامل">
+      <button id="login-btn">دخول</button>
+    </div>
+  </main>
+  <script>
+    let role = 'student';
+    document.getElementById('role-student').onclick = () => {
+      role = 'student';
+      document.getElementById('role-student').classList.add('active');
+      document.getElementById('role-teacher').classList.remove('active');
+    };
+    document.getElementById('role-teacher').onclick = () => {
+      role = 'teacher';
+      document.getElementById('role-teacher').classList.add('active');
+      document.getElementById('role-student').classList.remove('active');
+    };
+    document.getElementById('login-btn').onclick = async () => {
+      const name = document.getElementById('name').value.trim();
+      if (!name) return alert('اكتب اسمك');
+      const r = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, role })
+      });
+      const user = await r.json();
+      localStorage.setItem('user', JSON.stringify(user));
+      window.location.href = role === 'student' ? 'student.html' : 'teacher.html';
+    };
+  </script>
+</body>
+</html>
