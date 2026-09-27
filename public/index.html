@@ -23,6 +23,10 @@
 
       <input type="text" id="name" placeholder="اكتب اسمك الكامل" autocomplete="off">
 
+      <div id="teacher-code-wrap" style="display:none">
+        <input type="password" id="teacher-code" placeholder="🔐 رمز الأستاذ السري" autocomplete="off">
+      </div>
+
       <button id="login-btn" type="button">🚪 دخول</button>
 
       <div id="login-status" style="margin-top:12px; font-size:.9rem; font-weight:600; min-height:20px;"></div>
@@ -30,16 +34,18 @@
   </main>
 
   <script>
-    /* ============ تبديل الدور ============ */
     let role = 'student';
     const roleStudent = document.getElementById('role-student');
     const roleTeacher = document.getElementById('role-teacher');
     const statusEl = document.getElementById('login-status');
+    const codeWrap = document.getElementById('teacher-code-wrap');
+    const codeInput = document.getElementById('teacher-code');
 
     roleStudent.onclick = () => {
       role = 'student';
       roleStudent.classList.add('active');
       roleTeacher.classList.remove('active');
+      codeWrap.style.display = 'none';
       statusEl.textContent = '';
     };
 
@@ -47,23 +53,21 @@
       role = 'teacher';
       roleTeacher.classList.add('active');
       roleStudent.classList.remove('active');
+      codeWrap.style.display = 'block';
       statusEl.textContent = '';
     };
 
-    /* ============ تسجيل الدخول ============ */
     const loginBtn = document.getElementById('login-btn');
     const nameInput = document.getElementById('name');
 
     async function doLogin() {
       const name = nameInput.value.trim();
-
       if (!name) {
         statusEl.textContent = '⚠️ اكتب اسمك أولاً';
         statusEl.style.color = 'var(--warning)';
         nameInput.focus();
         return;
       }
-
       if (name.length < 3) {
         statusEl.textContent = '⚠️ الاسم قصير جداً';
         statusEl.style.color = 'var(--warning)';
@@ -77,23 +81,28 @@
       statusEl.style.color = '';
 
       try {
+        const body = { name, role };
+        if (role === 'teacher') body.teacher_code = codeInput.value;
+
         const r = await fetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, role })
+          body: JSON.stringify(body)
         });
 
         const data = await r.json();
 
         if (!r.ok) {
           if (data.error === 'not_allowed') {
-            statusEl.textContent = '🚫 ' + (data.message || 'لم يُصرّح لك بالتسجيل. تواصل مع الأستاذ.');
-            statusEl.style.color = 'var(--danger)';
+            statusEl.textContent = '🚫 ' + (data.message || 'لم يُصرّح لك بالتسجيل');
+          } else if (data.error === 'wrong_code') {
+            statusEl.textContent = '🔐 ' + (data.message || 'رمز الأستاذ غير صحيح');
+            codeInput.value = '';
+            codeInput.focus();
           } else {
             statusEl.textContent = '❌ ' + (data.error || 'فشل تسجيل الدخول');
-            statusEl.style.color = 'var(--danger)';
           }
-
+          statusEl.style.color = 'var(--danger)';
           loginBtn.disabled = false;
           loginBtn.innerHTML = originalHTML;
           return;
@@ -109,7 +118,7 @@
 
       } catch (err) {
         console.error('Login error:', err);
-        statusEl.textContent = '❌ خطأ في الاتصال بالخادم. تحقق من الإنترنت.';
+        statusEl.textContent = '❌ خطأ في الاتصال بالخادم';
         statusEl.style.color = 'var(--danger)';
         loginBtn.disabled = false;
         loginBtn.innerHTML = originalHTML;
@@ -117,15 +126,13 @@
     }
 
     loginBtn.onclick = doLogin;
-
     nameInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        doLogin();
-      }
+      if (e.key === 'Enter') { e.preventDefault(); doLogin(); }
+    });
+    codeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); doLogin(); }
     });
 
-    /* ============ فحص تسجيل دخول سابق ============ */
     (function checkExistingLogin() {
       try {
         const saved = localStorage.getItem('user');
@@ -138,6 +145,7 @@
             role = u.role;
             roleStudent.classList.toggle('active', u.role === 'student');
             roleTeacher.classList.toggle('active', u.role === 'teacher');
+            if (u.role === 'teacher') codeWrap.style.display = 'block';
           }
         }
       } catch (e) {}
