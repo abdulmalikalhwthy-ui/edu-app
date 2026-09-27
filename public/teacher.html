@@ -20,15 +20,16 @@
   <main>
     <div class="tabs tabs-scroll">
       <button id="tab-questions" class="active" type="button">📋 الأسئلة</button>
+      <button id="tab-exams" type="button">📝 الامتحانات</button>
+      <button id="tab-polls" type="button">📊 الاستطلاعات</button>
       <button id="tab-live" type="button">🔴 حصص مباشرة</button>
       <button id="tab-recordings" type="button">🎙️ التسجيلات</button>
       <button id="tab-students" type="button">👥 الطلاب</button>
       <button id="tab-classes" type="button">📚 الفصول</button>
       <button id="tab-search" type="button">🔎 البحث</button>
-      <button id="tab-stats" type="button">📊 الإحصائيات</button>
+      <button id="tab-stats" type="button">📈 الإحصائيات</button>
     </div>
 
-    <!-- الأسئلة -->
     <div id="view-questions">
       <div class="card">
         <h2>آخر الأسئلة الواردة</h2>
@@ -45,7 +46,68 @@
       </div>
     </div>
 
-    <!-- الحصص المباشرة -->
+    <div id="view-exams" style="display:none">
+      <div class="card">
+        <h2>➕ إنشاء امتحان جديد</h2>
+        <div class="field">
+          <label>عنوان الامتحان</label>
+          <input type="text" id="exam-title" placeholder="مثال: امتحان الفقه">
+        </div>
+        <div class="field">
+          <label>الوصف (اختياري)</label>
+          <input type="text" id="exam-description" placeholder="وصف مختصر">
+        </div>
+        <div class="field">
+          <label>الفصل</label>
+          <select id="exam-class"><option value="">كل الطلاب</option></select>
+        </div>
+        <div class="field">
+          <label>المدة بالدقائق</label>
+          <input type="number" id="exam-duration" value="30" min="1" max="300">
+        </div>
+        <div class="field">
+          <label>الأسئلة</label>
+          <div id="exam-questions-builder"></div>
+          <button type="button" id="add-question-btn" class="btn-search" style="width:100%">➕ إضافة سؤال</button>
+        </div>
+        <button id="create-exam-btn" class="btn-submit" type="button">📤 نشر الامتحان</button>
+        <div id="exam-status" style="text-align:center;margin-top:10px"></div>
+      </div>
+
+      <div class="card">
+        <h2>📝 الامتحانات المنشورة</h2>
+        <button id="refresh-exams-btn" type="button">🔄 تحديث</button>
+        <div id="exams-list" style="margin-top:14px"></div>
+      </div>
+    </div>
+
+    <div id="view-polls" style="display:none">
+      <div class="card">
+        <h2>➕ إنشاء استطلاع جديد</h2>
+        <div class="field">
+          <label>السؤال</label>
+          <input type="text" id="poll-question" placeholder="ما رأيك في...؟">
+        </div>
+        <div class="field">
+          <label>الفصل</label>
+          <select id="poll-class"><option value="">كل الطلاب</option></select>
+        </div>
+        <div class="field">
+          <label>الخيارات</label>
+          <div id="poll-options-builder"></div>
+          <button type="button" id="add-option-btn" class="btn-search" style="width:100%">➕ إضافة خيار</button>
+        </div>
+        <button id="create-poll-btn" class="btn-submit" type="button">📊 نشر الاستطلاع</button>
+        <div id="poll-create-status" style="text-align:center;margin-top:10px"></div>
+      </div>
+
+      <div class="card">
+        <h2>📊 الاستطلاعات</h2>
+        <button id="refresh-polls-btn" type="button">🔄 تحديث</button>
+        <div id="polls-list" style="margin-top:14px"></div>
+      </div>
+    </div>
+
     <div id="view-live" style="display:none">
       <div class="card">
         <h2>➕ إنشاء حصة مباشرة جديدة</h2>
@@ -54,12 +116,12 @@
           <input type="text" id="live-title" placeholder="مثال: شرح درس الطهارة">
         </div>
         <div class="field">
-          <label>الفصل (اختياري)</label>
+          <label>الفصل</label>
           <select id="live-class"><option value="">كل الطلاب</option></select>
         </div>
         <div class="field">
-          <label>كلمة مرور الحصة (اختيارية للأمان)</label>
-          <input type="text" id="live-password" placeholder="مثال: 1234 أو اتركه فارغاً">
+          <label>كلمة مرور الحصة (اختيارية)</label>
+          <input type="text" id="live-password" placeholder="مثال: 1234">
         </div>
         <button id="create-live-btn" type="button" class="btn-submit">🔴 بدء الحصة الآن</button>
         <div id="live-create-status" style="margin-top:10px; text-align:center"></div>
@@ -72,59 +134,47 @@
       </div>
     </div>
 
-    <!-- التسجيلات -->
     <div id="view-recordings" style="display:none">
       <div class="card">
         <h2>🎙️ إدارة التسجيلات</h2>
-        <p style="font-size:.85rem; color:var(--text-light); margin-bottom:10px">
-          جميع التسجيلات الصوتية والمرئية المرفوعة على السيرفر. يمكنك تنزيلها أو حذفها.
-        </p>
         <button id="refresh-recordings-btn" type="button">🔄 تحديث</button>
         <div id="recordings-list" style="margin-top:14px"></div>
       </div>
     </div>
 
-    <!-- الطلاب -->
     <div id="view-students" style="display:none">
       <div class="card">
         <h2>⚙️ التحكم بتسجيل الطلاب</h2>
         <div class="field">
-          <label>
-            <input type="checkbox" id="restrict-toggle" style="width:auto; display:inline-block; margin-inline-end:8px;">
-            قصر التسجيل على الطلاب المصرّح لهم فقط
-          </label>
+          <label><input type="checkbox" id="restrict-toggle" style="width:auto;display:inline-block;margin-inline-end:8px">قصر التسجيل على الطلاب المصرّح لهم</label>
         </div>
       </div>
-
       <div class="card">
-        <h2>🔐 رمز الأستاذ (كلمة المرور)</h2>
+        <h2>🔐 رمز الأستاذ</h2>
         <div class="add-student-form">
-          <input type="text" id="teacher-code-input" placeholder="رمز سري قوي...">
+          <input type="text" id="teacher-code-input" placeholder="رمز سري...">
           <button id="save-code-btn" type="button">💾 حفظ</button>
         </div>
-        <div id="code-status" style="margin-top:8px; font-size:.9rem;"></div>
+        <div id="code-status" style="margin-top:8px;font-size:.9rem"></div>
       </div>
-
       <div class="card">
-        <h2>📝 إضافة طالب جديد</h2>
+        <h2>📝 إضافة طالب</h2>
         <div class="add-student-form">
-          <input type="text" id="new-student-name" placeholder="اسم الطالب الكامل...">
-          <input type="email" id="new-student-email" placeholder="البريد الإلكتروني..." style="direction:ltr; text-align:left">
+          <input type="text" id="new-student-name" placeholder="اسم الطالب...">
+          <input type="email" id="new-student-email" placeholder="البريد...">
           <select id="new-student-class"></select>
           <button id="add-student-btn" type="button">➕ إضافة</button>
         </div>
       </div>
-
       <div class="card">
-        <h2>👥 قائمة الطلاب المصرّح لهم (<span id="students-count">0</span>)</h2>
+        <h2>👥 قائمة الطلاب (<span id="students-count">0</span>)</h2>
         <div id="students-list"></div>
       </div>
     </div>
 
-    <!-- الفصول -->
     <div id="view-classes" style="display:none">
       <div class="card">
-        <h2>➕ إضافة فصل جديد</h2>
+        <h2>➕ إضافة فصل</h2>
         <div class="add-student-form">
           <input type="text" id="new-class-name" placeholder="اسم الفصل">
           <button id="add-class-btn" type="button">➕ إضافة</button>
@@ -136,21 +186,20 @@
       </div>
     </div>
 
-    <!-- البحث -->
     <div id="view-search" style="display:none">
       <div class="card">
-        <h2>محرك البحث في الآيات والروايات</h2>
+        <h2>محرك البحث</h2>
         <div id="teacher-search"></div>
       </div>
     </div>
 
-    <!-- الإحصائيات -->
     <div id="view-stats" style="display:none">
       <div id="stats-content"></div>
     </div>
   </main>
 
   <script src="js/recorder.js"></script>
+  <script src="js/push-client.js"></script>
   <script src="js/teacher.js"></script>
 </body>
 </html>
