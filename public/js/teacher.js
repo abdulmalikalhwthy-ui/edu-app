@@ -1,3 +1,7 @@
+/* ============================================================
+   teacher.js — شاشة الأستاذ (نسخة مطوّرة)
+   ============================================================ */
+
 const user = JSON.parse(localStorage.getItem('user') || 'null');
 if (!user || user.role !== 'teacher') window.location.href = 'index.html';
 
@@ -8,15 +12,28 @@ document.getElementById('logout').onclick = (e) => {
   window.location.href = 'index.html';
 };
 
-/* ============ الأسئلة ============ */
+let allClasses = [];
+
+/* ============================================================
+   الأسئلة
+   ============================================================ */
 async function loadQuestions() {
-  const r = await fetch('/api/questions');
+  const classId = document.getElementById('filter-class').value;
+  const status = document.getElementById('filter-status').value;
+
+  let url = '/api/questions?';
+  if (classId) url += `class_id=${classId}&`;
+  if (status) url += `status=${status}&`;
+
+  const r = await fetch(url);
   const list = await r.json();
   const container = document.getElementById('questions-list');
+
   if (!list.length) {
-    container.innerHTML = '<div class="item">لا توجد أسئلة بعد.</div>';
+    container.innerHTML = '<div class="card" style="text-align:center;padding:30px">لا توجد أسئلة.</div>';
     return;
   }
+
   container.innerHTML = '';
   list.forEach(q => {
     const div = document.createElement('div');
@@ -26,6 +43,7 @@ async function loadQuestions() {
         <span class="badge ${q.status}">${q.status === 'answered' ? 'تم الرد' : 'قيد الانتظار'}</span>
       </h3>
       <div class="meta">👨‍🎓 ${q.student_name} — 📅 ${new Date(q.created_at).toLocaleString('ar-EG')}</div>
+      ${q.class_name ? `<div class="meta">📚 ${q.class_name}</div>` : ''}
       <div class="meta">موضوع: ${q.topic_text || '—'}</div>
     `;
     div.onclick = () => openQuestionModal(q);
@@ -33,6 +51,9 @@ async function loadQuestions() {
   });
 }
 
+/* ============================================================
+   نافذة السؤال والرد
+   ============================================================ */
 function openQuestionModal(q) {
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
@@ -62,6 +83,7 @@ function openQuestionModal(q) {
         <div id="live-info" style="margin-top:10px"></div>
       </div>
       <div class="modal-actions">
+        <button id="export-pdf" class="btn-search">📄 تصدير PDF</button>
         <button id="send-answer" class="btn-submit" style="flex:1">📤 إرسال الرد</button>
         <button id="close-modal" class="btn-danger">إغلاق</button>
       </div>
@@ -149,6 +171,9 @@ function openQuestionModal(q) {
 
   backdrop.querySelector('#close-modal').onclick = () => backdrop.remove();
 
+  /* تصدير PDF */
+  backdrop.querySelector('#export-pdf').onclick = () => exportQuestionPDF(q);
+
   backdrop.querySelector('#send-answer').onclick = async () => {
     const status = backdrop.querySelector('#answer-status');
     const answer_text = backdrop.querySelector('#answer-text').value.trim();
@@ -187,7 +212,54 @@ function openQuestionModal(q) {
   };
 }
 
-/* ============ إدارة الطلاب ============ */
+/* ============================================================
+   تصدير PDF
+   ============================================================ */
+function exportQuestionPDF(q) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  doc.setFont('helvetica');
+  doc.setFontSize(18);
+  doc.text('Question Report', 105, 15, { align: 'center' });
+  doc.setFontSize(11);
+  doc.text('Student: ' + (q.student_name || ''), 15, 30);
+  doc.text('Date: ' + new Date(q.created_at).toLocaleString(), 15, 37);
+  if (q.class_name) doc.text('Class: ' + q.class_name, 15, 44);
+
+  let y = 55;
+  const items = [
+    ['Question Type', q.question_type === 'new' ? 'New' : 'From Previous'],
+    ['Topic', q.topic_text],
+    ['Understanding', q.understanding_text],
+    ['Evidence', q.evidence_text],
+    ['Evidence Snippet', q.evidence_snippet],
+    ['Objection', q.objection_text],
+    ['Problem', q.problem_text],
+    ['Formulation', q.question_formulation],
+    ['Expected Answer', q.expected_answer_text]
+  ];
+
+  items.forEach(([label, value]) => {
+    if (!value) return;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text(label + ':', 15, y);
+    y += 6;
+    doc.setFont('helvetica', 'normal');
+    const lines = doc.splitTextToSize(value, 180);
+    doc.text(lines, 15, y);
+    y += lines.length * 6 + 4;
+    if (y > 270) { doc.addPage(); y = 20; }
+  });
+
+  doc.save(`question-${q.id}.pdf`);
+  showToast('📄 تم تصدير PDF');
+}
+
+/* ============================================================
+   الطلاب
+   ============================================================ */
 async function loadStudents() {
   const r = await fetch('/api/allowed-students');
   const list = await r.json();
@@ -204,9 +276,9 @@ async function loadStudents() {
     div.innerHTML = `
       <div style="flex:1">
         <div class="student-name">👨‍🎓 ${s.name}</div>
-        <div class="student-meta">📅 ${new Date(s.created_at).toLocaleDateString('ar-EG')}</div>
+        <div class="student-meta">${s.class_name ? '📚 ' + s.class_name + ' • ' : ''}📅 ${new Date(s.created_at).toLocaleDateString('ar-EG')}</div>
       </div>
-      <button class="remove-btn" data-id="${s.id}">🗑️ حذف</button>
+      <button class="remove-btn" data-id="${s.id}" type="button">🗑️ حذف</button>
     `;
     div.querySelector('.remove-btn').onclick = async (e) => {
       e.stopPropagation();
@@ -231,17 +303,44 @@ document.getElementById('restrict-toggle').onchange = async (e) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key: 'restrict_students', value: e.target.checked ? '1' : '0' })
   });
-  showToast(e.target.checked ? '🔒 تم تفعيل تقييد التسجيل' : '🔓 تم فتح التسجيل للجميع');
+  showToast(e.target.checked ? '🔒 تم تفعيل التقييد' : '🔓 تم فتح التسجيل');
+};
+
+document.getElementById('save-code-btn').onclick = async () => {
+  const code = document.getElementById('teacher-code-input').value.trim();
+  const status = document.getElementById('code-status');
+
+  await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: 'teacher_code', value: code })
+  });
+
+  if (code) {
+    status.textContent = '✅ تم تفعيل حماية الرمز';
+    status.style.color = 'var(--success)';
+  } else {
+    status.textContent = '🔓 تم إلغاء حماية الرمز';
+    status.style.color = 'var(--warning)';
+  }
+
+  showToast('✅ تم الحفظ');
 };
 
 document.getElementById('add-student-btn').onclick = async () => {
   const input = document.getElementById('new-student-name');
+  const classSelect = document.getElementById('new-student-class');
   const name = input.value.trim();
   if (!name) return showToast('اكتب اسم الطالب');
+
   const r = await fetch('/api/allowed-students', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, added_by: user.id })
+    body: JSON.stringify({
+      name,
+      added_by: user.id,
+      class_id: classSelect.value ? parseInt(classSelect.value) : null
+    })
   });
   const data = await r.json();
   if (data.ok) {
@@ -253,8 +352,140 @@ document.getElementById('add-student-btn').onclick = async () => {
   }
 };
 
-/* ============ التبويبات ============ */
-const tabs = ['questions', 'search', 'students'];
+/* ============================================================
+   الفصول
+   ============================================================ */
+async function loadClasses() {
+  const r = await fetch('/api/classes');
+  allClasses = await r.json();
+  document.getElementById('classes-count').textContent = allClasses.length;
+
+  // قائمة الفصول في النموذج
+  const container = document.getElementById('classes-list');
+  container.innerHTML = '';
+  if (!allClasses.length) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا توجد فصول</div>';
+  } else {
+    allClasses.forEach(c => {
+      const div = document.createElement('div');
+      div.className = 'student-row';
+      div.innerHTML = `
+        <div style="flex:1">
+          <div class="student-name">📚 ${c.name}</div>
+          ${c.description ? `<div class="student-meta">${c.description}</div>` : ''}
+        </div>
+        <button class="remove-btn" data-id="${c.id}" type="button">🗑️ حذف</button>
+      `;
+      div.querySelector('.remove-btn').onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm(`حذف الفصل "${c.name}"؟`)) return;
+        const r = await fetch('/api/classes/' + c.id, { method: 'DELETE' });
+        const data = await r.json();
+        if (data.ok) {
+          showToast('✅ تم الحذف');
+          loadClasses();
+        } else {
+          showToast('❌ ' + (data.error || 'فشل'));
+        }
+      };
+      container.appendChild(div);
+    });
+  }
+
+  // تحديث قوائم الاختيار
+  const studentClassSelect = document.getElementById('new-student-class');
+  const filterClassSelect = document.getElementById('filter-class');
+
+  const options = allClasses.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+
+  if (studentClassSelect) studentClassSelect.innerHTML = `<option value="">بدون فصل</option>${options}`;
+  if (filterClassSelect) filterClassSelect.innerHTML = `<option value="">كل الفصول</option>${options}`;
+}
+
+document.getElementById('add-class-btn').onclick = async () => {
+  const input = document.getElementById('new-class-name');
+  const name = input.value.trim();
+  if (!name) return showToast('اكتب اسم الفصل');
+
+  const r = await fetch('/api/classes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  });
+  const data = await r.json();
+  if (data.ok) {
+    showToast('✅ تمت إضافة الفصل');
+    input.value = '';
+    loadClasses();
+  } else {
+    showToast('❌ ' + (data.error || 'فشل'));
+  }
+};
+
+/* ============================================================
+   الإحصائيات
+   ============================================================ */
+async function loadStats() {
+  const r = await fetch('/api/stats');
+  const s = await r.json();
+  const container = document.getElementById('stats-content');
+
+  container.innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-card blue">
+        <div class="stat-value">${s.questions}</div>
+        <div class="stat-label">📋 إجمالي الأسئلة</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-value">${s.answered}</div>
+        <div class="stat-label">✅ تم الرد</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="stat-value">${s.pending}</div>
+        <div class="stat-label">⏳ قيد الانتظار</div>
+      </div>
+      <div class="stat-card purple">
+        <div class="stat-value">${s.students}</div>
+        <div class="stat-label">👨‍🎓 الطلاب</div>
+      </div>
+      <div class="stat-card teal">
+        <div class="stat-value">${s.allowed_students}</div>
+        <div class="stat-label">✅ المصرّح لهم</div>
+      </div>
+      <div class="stat-card pink">
+        <div class="stat-value">${s.classes}</div>
+        <div class="stat-label">📚 الفصول</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <h2>🏆 أنشط الطلاب</h2>
+      <div id="top-students"></div>
+    </div>
+  `;
+
+  const topContainer = container.querySelector('#top-students');
+  if (!s.top_students || !s.top_students.length) {
+    topContainer.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا بيانات بعد</div>';
+  } else {
+    s.top_students.forEach((st, i) => {
+      const medal = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'][i] || '▪️';
+      topContainer.insertAdjacentHTML('beforeend', `
+        <div class="student-row">
+          <div style="flex:1">
+            <div class="student-name">${medal} ${st.name}</div>
+          </div>
+          <div class="badge answered">${st.count} سؤال</div>
+        </div>
+      `);
+    });
+  }
+}
+
+/* ============================================================
+   التبويبات
+   ============================================================ */
+const tabs = ['questions', 'search', 'students', 'classes', 'stats'];
 tabs.forEach(t => {
   document.getElementById('tab-' + t).onclick = () => {
     tabs.forEach(x => {
@@ -265,11 +496,19 @@ tabs.forEach(t => {
       document.getElementById('teacher-search').dataset.init = '1';
       renderSearchResults(document.getElementById('teacher-search'), '_teacher');
     }
-    if (t === 'students') { loadStudents(); loadSettings(); }
+    if (t === 'students') { loadStudents(); loadSettings(); loadClasses(); }
+    if (t === 'classes') loadClasses();
+    if (t === 'stats') loadStats();
   };
 });
 
 document.getElementById('refresh-btn').onclick = loadQuestions;
+document.getElementById('filter-class').onchange = loadQuestions;
+document.getElementById('filter-status').onchange = loadQuestions;
 
+/* ============================================================
+   تشغيل
+   ============================================================ */
 loadQuestions();
+loadClasses();
 setInterval(loadQuestions, 30000);
