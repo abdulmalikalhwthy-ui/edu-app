@@ -20,9 +20,11 @@
   <main>
     <div class="tabs tabs-scroll">
       <button id="tab-questions" class="active" type="button">📋 الأسئلة</button>
-      <button id="tab-search" type="button">🔎 البحث</button>
+      <button id="tab-live" type="button">🔴 حصص مباشرة</button>
+      <button id="tab-recordings" type="button">🎙️ التسجيلات</button>
       <button id="tab-students" type="button">👥 الطلاب</button>
       <button id="tab-classes" type="button">📚 الفصول</button>
+      <button id="tab-search" type="button">🔎 البحث</button>
       <button id="tab-stats" type="button">📊 الإحصائيات</button>
     </div>
 
@@ -32,9 +34,7 @@
         <h2>آخر الأسئلة الواردة</h2>
         <div class="filter-row">
           <button id="refresh-btn" type="button">🔄 تحديث</button>
-          <select id="filter-class" style="flex:1">
-            <option value="">كل الفصول</option>
-          </select>
+          <select id="filter-class" style="flex:1"><option value="">كل الفصول</option></select>
           <select id="filter-status" style="flex:1">
             <option value="">كل الحالات</option>
             <option value="pending">قيد الانتظار</option>
@@ -45,11 +45,42 @@
       </div>
     </div>
 
-    <!-- البحث -->
-    <div id="view-search" style="display:none">
+    <!-- الحصص المباشرة -->
+    <div id="view-live" style="display:none">
       <div class="card">
-        <h2>محرك البحث في الآيات والروايات</h2>
-        <div id="teacher-search"></div>
+        <h2>➕ إنشاء حصة مباشرة جديدة</h2>
+        <div class="field">
+          <label>عنوان الحصة</label>
+          <input type="text" id="live-title" placeholder="مثال: شرح درس الطهارة">
+        </div>
+        <div class="field">
+          <label>الفصل (اختياري)</label>
+          <select id="live-class"><option value="">كل الطلاب</option></select>
+        </div>
+        <div class="field">
+          <label>كلمة مرور الحصة (اختيارية للأمان)</label>
+          <input type="text" id="live-password" placeholder="مثال: 1234 أو اتركه فارغاً">
+        </div>
+        <button id="create-live-btn" type="button" class="btn-submit">🔴 بدء الحصة الآن</button>
+        <div id="live-create-status" style="margin-top:10px; text-align:center"></div>
+      </div>
+
+      <div class="card">
+        <h2>🔴 الحصص النشطة</h2>
+        <button id="refresh-live-btn" type="button">🔄 تحديث</button>
+        <div id="live-sessions-list" style="margin-top:14px"></div>
+      </div>
+    </div>
+
+    <!-- التسجيلات -->
+    <div id="view-recordings" style="display:none">
+      <div class="card">
+        <h2>🎙️ إدارة التسجيلات</h2>
+        <p style="font-size:.85rem; color:var(--text-light); margin-bottom:10px">
+          جميع التسجيلات الصوتية والمرئية المرفوعة على السيرفر. يمكنك تنزيلها أو حذفها.
+        </p>
+        <button id="refresh-recordings-btn" type="button">🔄 تحديث</button>
+        <div id="recordings-list" style="margin-top:14px"></div>
       </div>
     </div>
 
@@ -62,17 +93,11 @@
             <input type="checkbox" id="restrict-toggle" style="width:auto; display:inline-block; margin-inline-end:8px;">
             قصر التسجيل على الطلاب المصرّح لهم فقط
           </label>
-          <p style="font-size:.85rem; color:var(--text-light); margin-top:6px">
-            عندما يكون مُفعّلاً، لن يستطيع أي طالب التسجيل إلا إذا أُضيف اسمه أدناه.
-          </p>
         </div>
       </div>
 
       <div class="card">
         <h2>🔐 رمز الأستاذ (كلمة المرور)</h2>
-        <p style="font-size:.85rem; color:var(--text-light); margin-bottom:10px">
-          اتركه فارغاً لإلغاء الحماية. سيُطلب من الأستاذ إدخاله عند تسجيل الدخول.
-        </p>
         <div class="add-student-form">
           <input type="text" id="teacher-code-input" placeholder="رمز سري قوي...">
           <button id="save-code-btn" type="button">💾 حفظ</button>
@@ -84,6 +109,7 @@
         <h2>📝 إضافة طالب جديد</h2>
         <div class="add-student-form">
           <input type="text" id="new-student-name" placeholder="اسم الطالب الكامل...">
+          <input type="email" id="new-student-email" placeholder="البريد الإلكتروني..." style="direction:ltr; text-align:left">
           <select id="new-student-class"></select>
           <button id="add-student-btn" type="button">➕ إضافة</button>
         </div>
@@ -100,13 +126,21 @@
       <div class="card">
         <h2>➕ إضافة فصل جديد</h2>
         <div class="add-student-form">
-          <input type="text" id="new-class-name" placeholder="اسم الفصل (مثل: الفصل الأول)">
+          <input type="text" id="new-class-name" placeholder="اسم الفصل">
           <button id="add-class-btn" type="button">➕ إضافة</button>
         </div>
       </div>
       <div class="card">
         <h2>📚 قائمة الفصول (<span id="classes-count">0</span>)</h2>
         <div id="classes-list"></div>
+      </div>
+    </div>
+
+    <!-- البحث -->
+    <div id="view-search" style="display:none">
+      <div class="card">
+        <h2>محرك البحث في الآيات والروايات</h2>
+        <div id="teacher-search"></div>
       </div>
     </div>
 
