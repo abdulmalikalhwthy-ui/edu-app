@@ -563,6 +563,91 @@ if (notifBadge) {
 }
 
 /* ============================================================
+   زر تفعيل الإشعارات اليدوي
+   ============================================================ */
+const enableNotifBtn = document.getElementById('enable-notifications');
+
+async function updateEnableBtn() {
+  if (!enableNotifBtn) return;
+  if (!('Notification' in window)) {
+    enableNotifBtn.textContent = '🔕 غير مدعوم';
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        enableNotifBtn.textContent = '✅ مفعّل';
+        enableNotifBtn.style.background = 'rgba(16,185,129,.5)';
+        return;
+      }
+    } catch (e) {}
+    enableNotifBtn.textContent = '⚠️ تفعيل جزئي';
+    enableNotifBtn.style.background = 'rgba(245,158,11,.5)';
+  } else if (Notification.permission === 'denied') {
+    enableNotifBtn.textContent = '❌ محظور';
+    enableNotifBtn.style.background = 'rgba(239,68,68,.5)';
+  } else {
+    enableNotifBtn.textContent = '🔔 تفعيل';
+  }
+}
+updateEnableBtn();
+
+if (enableNotifBtn) {
+  enableNotifBtn.onclick = async (e) => {
+    e.preventDefault();
+
+    if (!('Notification' in window)) {
+      return showToast('⚠️ الإشعارات غير مدعومة');
+    }
+
+    if (Notification.permission === 'denied') {
+      alert('⚠️ أنت محظور من الإشعارات.\n\n' +
+        'افتح إعدادات Chrome:\n' +
+        '1. اضغط على القفل 🔒 بجانب الرابط\n' +
+        '2. الإعدادات → الإشعارات\n' +
+        '3. اختر "اسمح"\n' +
+        '4. أعد تحميل الصفحة');
+      return;
+    }
+
+    enableNotifBtn.textContent = '⏳...';
+
+    try {
+      // اطلب الإذن
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        enableNotifBtn.textContent = '🔔 تفعيل';
+        return showToast('❌ لم يتم منح الإذن');
+      }
+
+      // اشترك في Push
+      if (window.PushClient && window.PushClient.subscribeToPush) {
+        const ok = await PushClient.subscribeToPush(user.id);
+        if (ok) {
+          enableNotifBtn.textContent = '✅ مفعّل';
+          enableNotifBtn.style.background = 'rgba(16,185,129,.5)';
+          showToast('✅ تم تفعيل الإشعارات');
+        } else {
+          enableNotifBtn.textContent = '✅ مفعّل';
+          enableNotifBtn.style.background = 'rgba(16,185,129,.5)';
+          showToast('✅ تم منح الإذن (بدون Push)');
+        }
+      } else {
+        enableNotifBtn.textContent = '✅ مفعّل';
+        enableNotifBtn.style.background = 'rgba(16,185,129,.5)';
+        showToast('✅ تم منح الإذن');
+      }
+    } catch (err) {
+      console.error(err);
+      enableNotifBtn.textContent = '🔔 تفعيل';
+      showToast('❌ ' + err.message);
+    }
+  };
+}
+
+/* ============================================================
    التنبيه بالحصة المباشرة + إشعار محلي
    ============================================================ */
 async function checkLiveSessions() {
@@ -587,13 +672,12 @@ async function checkLiveSessions() {
         `;
       }
 
-      // إشعار محلي على مستوى النظام (يعمل حتى بدون Push)
+      // إشعار محلي على مستوى النظام
       if (latest.id !== lastNotifiedSessionId) {
         lastNotifiedSessionId = latest.id;
 
         if ('Notification' in window && Notification.permission === 'granted') {
           try {
-            // اهتزاز
             if (navigator.vibrate) {
               navigator.vibrate([800, 200, 800, 200, 800]);
             }
@@ -680,7 +764,7 @@ setInterval(loadNotifications, 30000);
 setInterval(checkLiveSessions, 20000);
 
 /* ============================================================
-   تفعيل الإشعارات - طلب إذن + اشتراك
+   تفعيل الإشعارات - طلب إذن + اشتراك (تلقائي)
    ============================================================ */
 (async function initPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -720,15 +804,19 @@ setInterval(checkLiveSessions, 20000);
 
         document.getElementById('enable-push-btn').onclick = async () => {
           const u = JSON.parse(localStorage.getItem('user') || 'null');
-          if (!u || !u.id || !window.PushClient) return;
-          const ok = await PushClient.subscribeToPush(u.id);
-          if (ok) {
-            box.innerHTML = '<div style="font-weight:800; color:#065f46; font-size:1rem">✅ تم تفعيل الإشعارات!</div>';
-            setTimeout(() => box.remove(), 2000);
-          } else {
-            box.innerHTML = '<div style="font-weight:800; color:#991b1b; font-size:1rem">⚠️ تعذّر التفعيل</div>';
-            setTimeout(() => box.remove(), 4000);
+          if (!u || !u.id) return;
+          const permission = await Notification.requestPermission();
+          if (permission !== 'granted') {
+            box.innerHTML = '<div style="font-weight:800; color:#991b1b">⚠️ لم يُمنح الإذن</div>';
+            setTimeout(() => box.remove(), 3000);
+            return;
           }
+          if (window.PushClient) {
+            await PushClient.subscribeToPush(u.id);
+          }
+          box.innerHTML = '<div style="font-weight:800; color:#065f46">✅ تم تفعيل الإشعارات!</div>';
+          setTimeout(() => box.remove(), 2000);
+          updateEnableBtn();
         };
         document.getElementById('dismiss-push-btn').onclick = () => box.remove();
       }
