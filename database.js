@@ -9,9 +9,17 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS classes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS questions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id INTEGER NOT NULL,
+    class_id INTEGER,
     question_type TEXT NOT NULL,
     topic_text TEXT,
     topic_audio TEXT,
@@ -29,7 +37,8 @@ db.exec(`
     expected_answer_audio TEXT,
     status TEXT DEFAULT 'pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(student_id) REFERENCES users(id)
+    FOREIGN KEY(student_id) REFERENCES users(id),
+    FOREIGN KEY(class_id) REFERENCES classes(id)
   );
 
   CREATE TABLE IF NOT EXISTS answers (
@@ -49,8 +58,10 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS allowed_students (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE NOT NULL,
+    class_id INTEGER,
     added_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(class_id) REFERENCES classes(id),
     FOREIGN KEY(added_by) REFERENCES users(id)
   );
 
@@ -60,6 +71,11 @@ db.exec(`
   );
 `);
 
+// إعدادات افتراضية
 db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('restrict_students', '0')`).run();
+db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('teacher_code', '')`).run();
+
+// فصل افتراضي عام
+db.prepare(`INSERT OR IGNORE INTO classes (name, description) VALUES ('عام', 'الفصل الافتراضي')`).run();
 
 module.exports = db;
