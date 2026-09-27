@@ -1,7 +1,7 @@
 /* ============================================================
    student.js — شاشة الطالب الكاملة
    يشمل: صياغة السؤال، الأسئلة، الامتحانات، الاستطلاعات،
-          الإشعارات، والتنبيه بالحصص المباشرة + تفعيل Push
+          الإشعارات، والتنبيه بالحصص المباشرة (مع إشعار محلي)
    ============================================================ */
 
 const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -27,6 +27,7 @@ const FIELDS = [
 
 const audioUrls = {};
 let classesList = [];
+let lastNotifiedSessionId = null;
 
 /* ============================================================
    تحميل الفصول
@@ -508,14 +509,18 @@ async function loadNotifications() {
 
   const badge = document.getElementById('notif-badge');
   const countEl = document.getElementById('notif-count');
-  if (unread > 0) {
-    badge.style.display = 'inline-block';
-    countEl.textContent = unread;
-  } else {
-    badge.style.display = 'none';
+  if (badge && countEl) {
+    if (unread > 0) {
+      badge.style.display = 'inline-block';
+      countEl.textContent = unread;
+    } else {
+      badge.style.display = 'none';
+    }
   }
 
   const container = document.getElementById('notifs-list');
+  if (!container) return;
+
   if (!list.length) {
     container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا توجد إشعارات</div>';
     return;
@@ -536,22 +541,29 @@ async function loadNotifications() {
   });
 }
 
-document.getElementById('read-all').onclick = async () => {
-  await fetch('/api/notifications/read-all', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ student_id: user.id })
-  });
-  showToast('✅ تم تحديد الكل');
-  loadNotifications();
-};
+const readAllBtn = document.getElementById('read-all');
+if (readAllBtn) {
+  readAllBtn.onclick = async () => {
+    await fetch('/api/notifications/read-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ student_id: user.id })
+    });
+    showToast('✅ تم تحديد الكل');
+    loadNotifications();
+  };
+}
 
-document.getElementById('notif-badge').onclick = () => {
-  document.getElementById('tab-notifs').click();
-};
+const notifBadge = document.getElementById('notif-badge');
+if (notifBadge) {
+  notifBadge.onclick = () => {
+    const tab = document.getElementById('tab-notifs');
+    if (tab) tab.click();
+  };
+}
 
 /* ============================================================
-   التنبيه بالحصة المباشرة
+   التنبيه بالحصة المباشرة + إشعار محلي
    ============================================================ */
 async function checkLiveSessions() {
   try {
@@ -561,17 +573,71 @@ async function checkLiveSessions() {
 
     if (sessions.length > 0) {
       const latest = sessions[0];
-      alertBox.style.display = 'block';
-      alertBox.innerHTML = `
-        <span>🔴 <b>${latest.title}</b> — بدأ الأستاذ ${latest.teacher_name} حصة مباشرة الآن!</span>
-        <a href="${latest.room_link}${latest.password ? '#config.callPassword=' + encodeURIComponent(latest.password) : ''}" target="_blank"
-           class="btn-submit" style="display:block; text-decoration:none; text-align:center; margin-top:10px; padding:12px">
-           🚪 دخول القاعة
-        </a>
-        ${latest.password ? `<div style="text-align:center; margin-top:8px; font-size:.85rem">🔐 كلمة المرور: <b style="font-family:monospace; color:var(--danger)">${latest.password}</b></div>` : ''}
-      `;
+
+      // عرض الشريط داخل التطبيق
+      if (alertBox) {
+        alertBox.style.display = 'block';
+        alertBox.innerHTML = `
+          <span>🔴 <b>${latest.title}</b> — بدأ الأستاذ ${latest.teacher_name} حصة مباشرة الآن!</span>
+          <a href="${latest.room_link}${latest.password ? '#config.callPassword=' + encodeURIComponent(latest.password) : ''}" target="_blank"
+             class="btn-submit" style="display:block; text-decoration:none; text-align:center; margin-top:10px; padding:12px">
+             🚪 دخول القاعة
+          </a>
+          ${latest.password ? `<div style="text-align:center; margin-top:8px; font-size:.85rem">🔐 كلمة المرور: <b style="font-family:monospace; color:var(--danger)">${latest.password}</b></div>` : ''}
+        `;
+      }
+
+      // إشعار محلي على مستوى النظام (يعمل حتى بدون Push)
+      if (latest.id !== lastNotifiedSessionId) {
+        lastNotifiedSessionId = latest.id;
+
+        if ('Notification' in window && Notification.permission === 'granted') {
+          try {
+            // اهتزاز
+            if (navigator.vibrate) {
+              navigator.vibrate([800, 200, 800, 200, 800]);
+            }
+
+            const reg = await navigator.serviceWorker.getRegistration();
+            if (reg && reg.showNotification) {
+              await reg.showNotification('🔴 حصة مباشرة الآن!', {
+                body: `${latest.title} — انقر للانضمام`,
+                icon: '/icon-192.png',
+                badge: '/icon-192.png',
+                vibrate: [800, 200, 800, 200, 800],
+                requireInteraction: true,
+                tag: 'live-session-' + latest.id,
+                renotify: true,
+                dir: 'rtl',
+                lang: 'ar',
+                silent: false,
+                data: {
+                  url: latest.room_link + (latest.password ? '#config.callPassword=' + encodeURIComponent(latest.password) : ''),
+                  type: 'live_session',
+                  room_link: latest.room_link,
+                  password: latest.password || null
+                },
+                actions: [
+                  { action: 'join', title: '🚪 دخول القاعة' },
+                  { action: 'close', title: 'لاحقاً' }
+                ]
+              });
+              console.log('✅ تم إرسال الإشعار المحلي');
+            } else {
+              new Notification('🔴 حصة مباشرة الآن!', {
+                body: `${latest.title} — انقر للانضمام`,
+                icon: '/icon-192.png',
+                tag: 'live-session-' + latest.id
+              });
+            }
+          } catch (e) {
+            console.error('Local notification error:', e);
+          }
+        }
+      }
     } else {
-      alertBox.style.display = 'none';
+      if (alertBox) alertBox.style.display = 'none';
+      lastNotifiedSessionId = null;
     }
   } catch (e) {}
 }
@@ -581,10 +647,14 @@ async function checkLiveSessions() {
    ============================================================ */
 const tabs = ['form', 'list', 'exams', 'polls', 'notifs'];
 tabs.forEach(t => {
-  document.getElementById('tab-' + t).onclick = () => {
+  const tabEl = document.getElementById('tab-' + t);
+  if (!tabEl) return;
+  tabEl.onclick = () => {
     tabs.forEach(x => {
-      document.getElementById('tab-' + x).classList.toggle('active', x === t);
-      document.getElementById('view-' + x).style.display = x === t ? 'block' : 'none';
+      const tb = document.getElementById('tab-' + x);
+      const vw = document.getElementById('view-' + x);
+      if (tb) tb.classList.toggle('active', x === t);
+      if (vw) vw.style.display = x === t ? 'block' : 'none';
     });
     if (t === 'list') loadMyQuestions();
     if (t === 'exams') loadExams();
@@ -593,8 +663,11 @@ tabs.forEach(t => {
   };
 });
 
-document.getElementById('refresh-exams').onclick = loadExams;
-document.getElementById('refresh-polls').onclick = loadPolls;
+const refreshExamsBtn = document.getElementById('refresh-exams');
+if (refreshExamsBtn) refreshExamsBtn.onclick = loadExams;
+
+const refreshPollsBtn = document.getElementById('refresh-polls');
+if (refreshPollsBtn) refreshPollsBtn.onclick = loadPolls;
 
 /* ============================================================
    تشغيل
@@ -627,7 +700,9 @@ setInterval(checkLiveSessions, 20000);
     setTimeout(async () => {
       if (Notification.permission === 'granted') {
         const u = JSON.parse(localStorage.getItem('user') || 'null');
-        if (u && u.id) await PushClient.subscribeToPush(u.id);
+        if (u && u.id && window.PushClient) {
+          await PushClient.subscribeToPush(u.id);
+        }
       } else if (Notification.permission !== 'denied') {
         const box = document.createElement('div');
         box.style.cssText = 'position:fixed; bottom:80px; left:16px; right:16px; background:linear-gradient(135deg,#fef3c7,#fde68a); border:3px solid #f59e0b; border-radius:18px; padding:16px; z-index:3000; box-shadow:0 10px 30px rgba(245,158,11,.3); text-align:center;';
@@ -645,13 +720,13 @@ setInterval(checkLiveSessions, 20000);
 
         document.getElementById('enable-push-btn').onclick = async () => {
           const u = JSON.parse(localStorage.getItem('user') || 'null');
-          if (!u || !u.id) return;
+          if (!u || !u.id || !window.PushClient) return;
           const ok = await PushClient.subscribeToPush(u.id);
           if (ok) {
             box.innerHTML = '<div style="font-weight:800; color:#065f46; font-size:1rem">✅ تم تفعيل الإشعارات!</div>';
             setTimeout(() => box.remove(), 2000);
           } else {
-            box.innerHTML = '<div style="font-weight:800; color:#991b1b; font-size:1rem">⚠️ تعذّر التفعيل. تأكد من السماح بالإشعارات في إعدادات المتصفح.</div>';
+            box.innerHTML = '<div style="font-weight:800; color:#991b1b; font-size:1rem">⚠️ تعذّر التفعيل</div>';
             setTimeout(() => box.remove(), 4000);
           }
         };
