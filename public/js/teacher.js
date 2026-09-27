@@ -1,5 +1,7 @@
 /* ============================================================
-   teacher.js — نسخة مطوّرة كاملة
+   teacher.js — شاشة الأستاذ الكاملة
+   يشمل: الأسئلة، الامتحانات، الاستطلاعات، الحصص المباشرة،
+          التسجيلات، الطلاب، الفصول، البحث، الإحصائيات + Push
    ============================================================ */
 
 const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -27,10 +29,12 @@ async function loadQuestions() {
   const r = await fetch(url);
   const list = await r.json();
   const container = document.getElementById('questions-list');
+
   if (!list.length) {
     container.innerHTML = '<div class="card" style="text-align:center;padding:30px">لا توجد أسئلة.</div>';
     return;
   }
+
   container.innerHTML = '';
   list.forEach(q => {
     const div = document.createElement('div');
@@ -93,6 +97,7 @@ function openQuestionModal(q) {
     ['صيغة سؤال الإشكال', q.question_formulation],
     ['الإجابة المفترض سماعها', q.expected_answer_text, q.expected_answer_audio]
   ];
+
   fieldMap.forEach(([label, text, audio]) => {
     if (!text && !audio) return;
     details.insertAdjacentHTML('beforeend', `
@@ -155,7 +160,7 @@ function openQuestionModal(q) {
     const status = backdrop.querySelector('#answer-status');
     const answer_text = backdrop.querySelector('#answer-text').value.trim();
     if (!answer_text && !answerAudioUrl && !answerVideoUrl) {
-      status.textContent = '❌ أدخل رداً واحداً على الأقل';
+      status.textContent = '❌ أدخل رداً على الأقل';
       status.style.color = 'var(--danger)';
       return;
     }
@@ -172,35 +177,28 @@ function openQuestionModal(q) {
       });
       const data = await r.json();
       if (data.ok) {
-        status.textContent = '✅ تم إرسال الرد';
+        status.textContent = '✅ تم الإرسال';
         status.style.color = 'var(--success)';
         showToast('✅ تم إرسال الرد');
         setTimeout(() => { backdrop.remove(); loadQuestions(); }, 700);
       }
     } catch (e) {
-      status.textContent = '❌ فشل الإرسال';
+      status.textContent = '❌ فشل';
       status.style.color = 'var(--danger)';
     }
   };
 }
 
 function renderMedia(url, type) {
-  const dlAttr = `download`;
   return `
     <div style="margin-top:8px">
-      ${type === 'audio'
-        ? `<audio controls src="${url}" style="width:100%; border-radius:10px"></audio>`
-        : `<video controls src="${url}" style="width:100%; border-radius:10px"></video>`}
-      <a href="${url}" ${dlAttr} class="btn-search" style="display:inline-block; margin-top:6px; text-decoration:none; color:var(--primary-dark)">
-        ⬇️ تنزيل
-      </a>
+      ${type === 'audio' ? `<audio controls src="${url}" style="width:100%; border-radius:10px"></audio>`
+                          : `<video controls src="${url}" style="width:100%; border-radius:10px"></video>`}
+      <a href="${url}" download class="btn-search" style="display:inline-block; margin-top:6px; text-decoration:none; color:var(--primary-dark)">⬇️ تنزيل</a>
     </div>
   `;
 }
 
-/* ============================================================
-   تصدير PDF
-   ============================================================ */
 function exportQuestionPDF(q) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -209,18 +207,11 @@ function exportQuestionPDF(q) {
   doc.setFontSize(11);
   doc.text('Student: ' + (q.student_name || ''), 15, 30);
   doc.text('Date: ' + new Date(q.created_at).toLocaleString(), 15, 37);
-  if (q.class_name) doc.text('Class: ' + q.class_name, 15, 44);
-
-  let y = 55;
+  let y = 50;
   const items = [
-    ['Type', q.question_type === 'new' ? 'New' : 'Previous'],
-    ['Topic', q.topic_text],
-    ['Understanding', q.understanding_text],
-    ['Evidence', q.evidence_text],
-    ['Snippet', q.evidence_snippet],
-    ['Objection', q.objection_text],
-    ['Problem', q.problem_text],
-    ['Formulation', q.question_formulation],
+    ['Topic', q.topic_text], ['Understanding', q.understanding_text],
+    ['Evidence', q.evidence_text], ['Objection', q.objection_text],
+    ['Problem', q.problem_text], ['Formulation', q.question_formulation],
     ['Expected', q.expected_answer_text]
   ];
   items.forEach(([label, value]) => {
@@ -234,7 +225,313 @@ function exportQuestionPDF(q) {
     if (y > 270) { doc.addPage(); y = 20; }
   });
   doc.save(`question-${q.id}.pdf`);
-  showToast('📄 تم تصدير PDF');
+}
+
+/* ============================================================
+   بناء الامتحان
+   ============================================================ */
+let examQuestions = [];
+
+function renderExamBuilder() {
+  const container = document.getElementById('exam-questions-builder');
+  if (!examQuestions.length) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:14px">لا توجد أسئلة بعد</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  examQuestions.forEach((q, idx) => {
+    const div = document.createElement('div');
+    div.className = 'field';
+    div.style.border = '2px solid var(--border)';
+    div.style.padding = '12px';
+    div.style.borderRadius = '12px';
+    div.style.marginBottom = '10px';
+
+    let optionsHtml = '';
+    if (q.question_type === 'mcq') {
+      optionsHtml = `
+        <label>الخيارات (كل سطر خيار)</label>
+        <textarea class="q-options" rows="4" placeholder="خيار 1&#10;خيار 2&#10;خيار 3">${(q.options || []).join('\n')}</textarea>
+      `;
+    }
+
+    div.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+        <b>سؤال ${idx + 1}</b>
+        <button type="button" class="remove-btn remove-q" data-idx="${idx}">🗑️</button>
+      </div>
+      <label>نص السؤال</label>
+      <input type="text" class="q-text" value="${(q.question_text || '').replace(/"/g, '&quot;')}" placeholder="اكتب السؤال هنا...">
+      <label style="margin-top:8px">النوع</label>
+      <select class="q-type">
+        <option value="mcq" ${q.question_type === 'mcq' ? 'selected' : ''}>اختيار من متعدد</option>
+        <option value="truefalse" ${q.question_type === 'truefalse' ? 'selected' : ''}>صحيح / خطأ</option>
+        <option value="essay" ${q.question_type === 'essay' ? 'selected' : ''}>مقالي</option>
+      </select>
+      ${optionsHtml}
+      <label style="margin-top:8px">الإجابة الصحيحة</label>
+      <input type="text" class="q-answer" value="${(q.correct_answer || '').replace(/"/g, '&quot;')}" placeholder="اكتب الإجابة الصحيحة">
+      <label style="margin-top:8px">النقاط</label>
+      <input type="number" class="q-points" value="${q.points || 1}" min="1">
+    `;
+
+    div.querySelector('.remove-q').onclick = () => {
+      examQuestions.splice(idx, 1);
+      renderExamBuilder();
+    };
+    div.querySelector('.q-text').oninput = (e) => { examQuestions[idx].question_text = e.target.value; };
+    div.querySelector('.q-type').onchange = (e) => {
+      examQuestions[idx].question_type = e.target.value;
+      renderExamBuilder();
+    };
+    const opts = div.querySelector('.q-options');
+    if (opts) opts.oninput = (e) => {
+      examQuestions[idx].options = e.target.value.split('\n').filter(x => x.trim());
+    };
+    div.querySelector('.q-answer').oninput = (e) => { examQuestions[idx].correct_answer = e.target.value; };
+    div.querySelector('.q-points').oninput = (e) => { examQuestions[idx].points = parseInt(e.target.value) || 1; };
+
+    container.appendChild(div);
+  });
+}
+
+document.getElementById('add-question-btn').onclick = () => {
+  examQuestions.push({ question_text: '', question_type: 'mcq', options: [], correct_answer: '', points: 1 });
+  renderExamBuilder();
+};
+
+document.getElementById('create-exam-btn').onclick = async () => {
+  const title = document.getElementById('exam-title').value.trim();
+  const description = document.getElementById('exam-description').value.trim();
+  const classId = document.getElementById('exam-class').value;
+  const duration = parseInt(document.getElementById('exam-duration').value) || 30;
+  const statusEl = document.getElementById('exam-status');
+
+  if (!title) { statusEl.textContent = '⚠️ اكتب عنوان الامتحان'; statusEl.style.color = 'var(--warning)'; return; }
+  if (!examQuestions.length) { statusEl.textContent = '⚠️ أضف سؤالاً واحداً'; statusEl.style.color = 'var(--warning)'; return; }
+  if (examQuestions.some(q => !q.question_text.trim())) { statusEl.textContent = '⚠️ بعض الأسئلة بدون نص'; statusEl.style.color = 'var(--warning)'; return; }
+
+  statusEl.textContent = '⏳ جاري الإنشاء...';
+  statusEl.style.color = 'var(--text-light)';
+
+  try {
+    const r = await fetch('/api/exams', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title, description,
+        class_id: classId ? parseInt(classId) : null,
+        teacher_id: user.id,
+        duration_minutes: duration,
+        questions: examQuestions
+      })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      statusEl.textContent = '✅ تم نشر الامتحان!';
+      statusEl.style.color = 'var(--success)';
+      showToast('✅ تم نشر الامتحان');
+      document.getElementById('exam-title').value = '';
+      document.getElementById('exam-description').value = '';
+      examQuestions = [];
+      renderExamBuilder();
+      loadExams();
+    } else {
+      statusEl.textContent = '❌ ' + (data.error || 'فشل');
+      statusEl.style.color = 'var(--danger)';
+    }
+  } catch (e) {
+    statusEl.textContent = '❌ فشل الاتصال';
+    statusEl.style.color = 'var(--danger)';
+  }
+};
+
+async function loadExams() {
+  const r = await fetch('/api/exams');
+  const list = await r.json();
+  const container = document.getElementById('exams-list');
+  if (!list.length) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا توجد امتحانات</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  list.forEach(exam => {
+    const div = document.createElement('div');
+    div.className = 'question-item';
+    div.innerHTML = `
+      <h3>📝 ${exam.title} <span class="badge answered">${exam.status === 'published' ? 'منشور' : 'مسودة'}</span></h3>
+      <div class="meta">⏱️ ${exam.duration_minutes} دقيقة — 🎯 ${exam.total_points} نقطة</div>
+      ${exam.class_name ? `<div class="meta">📚 ${exam.class_name}</div>` : ''}
+      <div class="meta">📅 ${new Date(exam.created_at).toLocaleString('ar-EG')}</div>
+      <div class="modal-actions" style="margin-top:10px">
+        <button class="btn-search view-attempts" data-id="${exam.id}" type="button">👁️ النتائج</button>
+        <button class="btn-danger delete-exam" data-id="${exam.id}" type="button">🗑️ حذف</button>
+      </div>
+    `;
+    div.querySelector('.view-attempts').onclick = () => viewExamAttempts(exam.id, exam.title);
+    div.querySelector('.delete-exam').onclick = async () => {
+      if (!confirm(`حذف امتحان "${exam.title}"؟`)) return;
+      await fetch('/api/exams/' + exam.id, { method: 'DELETE' });
+      showToast('✅ تم الحذف');
+      loadExams();
+    };
+    container.appendChild(div);
+  });
+}
+
+async function viewExamAttempts(examId, title) {
+  const r = await fetch(`/api/exams/${examId}/attempts`);
+  const list = await r.json();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+
+  let attemptsHtml = '';
+  if (!list.length) {
+    attemptsHtml = '<div style="text-align:center;color:var(--text-light);padding:20px">لا توجد محاولات بعد</div>';
+  } else {
+    list.forEach(a => {
+      const pct = a.max_score ? Math.round(a.score / a.max_score * 100) : 0;
+      attemptsHtml += `
+        <div class="student-row" style="flex-direction:column; align-items:stretch">
+          <div style="display:flex; justify-content:space-between">
+            <b>${a.student_name}</b>
+            <span class="badge ${pct >= 50 ? 'answered' : 'pending'}">${a.score} / ${a.max_score} (${pct}%)</span>
+          </div>
+          ${a.student_email ? `<div class="student-meta">📧 ${a.student_email}</div>` : ''}
+          <div class="student-meta">📅 ${new Date(a.submitted_at).toLocaleString('ar-EG')}</div>
+        </div>
+      `;
+    });
+  }
+
+  backdrop.innerHTML = `
+    <div class="modal">
+      <h2>📊 نتائج: ${title}</h2>
+      ${attemptsHtml}
+      <button id="close-attempts" class="btn-danger" type="button" style="width:100%;margin-top:14px">إغلاق</button>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.querySelector('#close-attempts').onclick = () => backdrop.remove();
+}
+
+/* ============================================================
+   بناء الاستطلاع
+   ============================================================ */
+let pollOptions = ['', ''];
+
+function renderPollBuilder() {
+  const container = document.getElementById('poll-options-builder');
+  container.innerHTML = '';
+  pollOptions.forEach((opt, idx) => {
+    const div = document.createElement('div');
+    div.style.display = 'flex';
+    div.style.gap = '8px';
+    div.style.marginBottom = '8px';
+    div.innerHTML = `
+      <input type="text" class="poll-opt" value="${opt.replace(/"/g, '&quot;')}" placeholder="خيار ${idx + 1}">
+      ${pollOptions.length > 2 ? `<button type="button" class="remove-btn remove-opt" data-idx="${idx}">🗑️</button>` : ''}
+    `;
+    div.querySelector('.poll-opt').oninput = (e) => { pollOptions[idx] = e.target.value; };
+    const rm = div.querySelector('.remove-opt');
+    if (rm) rm.onclick = () => { pollOptions.splice(idx, 1); renderPollBuilder(); };
+    container.appendChild(div);
+  });
+}
+
+document.getElementById('add-option-btn').onclick = () => {
+  pollOptions.push('');
+  renderPollBuilder();
+};
+
+document.getElementById('create-poll-btn').onclick = async () => {
+  const question = document.getElementById('poll-question').value.trim();
+  const classId = document.getElementById('poll-class').value;
+  const statusEl = document.getElementById('poll-create-status');
+
+  const cleanOptions = pollOptions.filter(o => o.trim());
+  if (!question) { statusEl.textContent = '⚠️ اكتب السؤال'; statusEl.style.color = 'var(--warning)'; return; }
+  if (cleanOptions.length < 2) { statusEl.textContent = '⚠️ أضف خيارين على الأقل'; statusEl.style.color = 'var(--warning)'; return; }
+
+  statusEl.textContent = '⏳ جاري النشر...';
+  try {
+    const r = await fetch('/api/polls', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question, options: cleanOptions,
+        class_id: classId ? parseInt(classId) : null,
+        teacher_id: user.id
+      })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      statusEl.textContent = '✅ تم النشر';
+      statusEl.style.color = 'var(--success)';
+      showToast('✅ تم النشر');
+      document.getElementById('poll-question').value = '';
+      pollOptions = ['', ''];
+      renderPollBuilder();
+      loadPolls();
+    } else {
+      statusEl.textContent = '❌ ' + (data.error || 'فشل');
+      statusEl.style.color = 'var(--danger)';
+    }
+  } catch (e) {
+    statusEl.textContent = '❌ فشل الاتصال';
+    statusEl.style.color = 'var(--danger)';
+  }
+};
+
+async function loadPolls() {
+  const r = await fetch('/api/polls');
+  const list = await r.json();
+  const container = document.getElementById('polls-list');
+  if (!list.length) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا توجد استطلاعات</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  for (const poll of list) {
+    const resResp = await fetch(`/api/polls/${poll.id}/results`);
+    const { results, total_votes } = await resResp.json();
+
+    let bars = results.map(r => {
+      const pct = total_votes ? Math.round(r.count / total_votes * 100) : 0;
+      return `
+        <div style="margin-bottom:8px">
+          <div style="display:flex; justify-content:space-between; font-size:.85rem; margin-bottom:3px">
+            <b>${r.label}</b><span>${r.count} (${pct}%)</span>
+          </div>
+          <div style="background:#e2e8f0; border-radius:8px; height:18px; overflow:hidden">
+            <div style="background:linear-gradient(90deg, #2563eb, #7c3aed); height:100%; width:${pct}%"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const div = document.createElement('div');
+    div.className = 'question-item';
+    div.innerHTML = `
+      <h3>📊 ${poll.question} <span class="badge ${poll.status === 'active' ? 'answered' : 'pending'}">${poll.status === 'active' ? 'نشط' : 'منتهي'}</span></h3>
+      <div class="meta">📅 ${new Date(poll.created_at).toLocaleString('ar-EG')}</div>
+      <div class="meta">🗳️ إجمالي الأصوات: <b>${total_votes}</b></div>
+      <div style="margin-top:12px">${bars}</div>
+      ${poll.status === 'active' ? `<button class="btn-danger end-poll" data-id="${poll.id}" type="button" style="margin-top:10px; width:100%">⏹️ إنهاء الاستطلاع</button>` : ''}
+    `;
+    const endBtn = div.querySelector('.end-poll');
+    if (endBtn) endBtn.onclick = async () => {
+      if (!confirm('إنهاء هذا الاستطلاع؟')) return;
+      await fetch('/api/polls/' + poll.id, { method: 'DELETE' });
+      showToast('✅ تم الإنهاء');
+      loadPolls();
+    };
+    container.appendChild(div);
+  }
 }
 
 /* ============================================================
@@ -245,31 +542,30 @@ async function loadLiveSessions() {
   const list = await r.json();
   const container = document.getElementById('live-sessions-list');
   if (!list.length) {
-    container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا توجد حصص نشطة حالياً</div>';
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا توجد حصص نشطة</div>';
     return;
   }
+
   container.innerHTML = '';
   list.forEach(s => {
     const div = document.createElement('div');
-    div.className = 'question-item';
+    div.className = 'live-item';
     div.innerHTML = `
-      <h3>🔴 ${s.title}
-        <span class="badge answered">نشطة</span>
-      </h3>
-      <div class="meta">👨‍🏫 ${s.teacher_name}</div>
-      ${s.class_name ? `<div class="meta">📚 ${s.class_name}</div>` : ''}
-      <div class="meta">📅 ${new Date(s.created_at).toLocaleString('ar-EG')}</div>
-      ${s.password ? `<div class="meta">🔐 كلمة المرور: <b style="color:var(--danger); font-family:monospace">${s.password}</b></div>` : ''}
+      <h3>🔴 ${s.title}</h3>
+      <div class="live-meta">👨‍🏫 ${s.teacher_name}</div>
+      ${s.class_name ? `<div class="live-meta">📚 ${s.class_name}</div>` : ''}
+      <div class="live-meta">📅 ${new Date(s.created_at).toLocaleString('ar-EG')}</div>
+      ${s.password ? `<div class="live-meta">🔐 كلمة المرور: <span class="live-password">${s.password}</span></div>` : ''}
       <div class="modal-actions" style="margin-top:10px">
-        <a href="${s.room_link}${s.password ? '#config.callPassword=' + encodeURIComponent(s.password) : ''}" target="_blank" class="btn-submit" style="text-decoration:none; text-align:center; padding:10px">🚪 دخول القاعة</a>
+        <a href="${s.room_link}" target="_blank" class="btn-submit" style="text-decoration:none; text-align:center; padding:10px; flex:1">🚪 دخول القاعة</a>
         <button class="btn-danger end-live" data-id="${s.id}" type="button">⏹️ إنهاء</button>
       </div>
     `;
     div.querySelector('.end-live').onclick = async (e) => {
       e.stopPropagation();
-      if (!confirm('إنهاء هذه الحصة؟')) return;
+      if (!confirm('إنهاء الحصة؟')) return;
       await fetch('/api/live-sessions/' + s.id, { method: 'DELETE' });
-      showToast('✅ تم إنهاء الحصة');
+      showToast('✅ تم الإنهاء');
       loadLiveSessions();
     };
     container.appendChild(div);
@@ -282,15 +578,9 @@ document.getElementById('create-live-btn').onclick = async () => {
   const password = document.getElementById('live-password').value.trim();
   const status = document.getElementById('live-create-status');
 
-  if (!title) {
-    status.textContent = '⚠️ اكتب عنوان الحصة';
-    status.style.color = 'var(--warning)';
-    return;
-  }
+  if (!title) { status.textContent = '⚠️ اكتب عنوان الحصة'; status.style.color = 'var(--warning)'; return; }
 
   status.textContent = '⏳ جاري الإنشاء...';
-  status.style.color = 'var(--text-light)';
-
   try {
     const r = await fetch('/api/live-sessions', {
       method: 'POST',
@@ -303,7 +593,7 @@ document.getElementById('create-live-btn').onclick = async () => {
     });
     const data = await r.json();
     if (data.ok) {
-      status.textContent = '✅ تم إنشاء الحصة!';
+      status.textContent = `✅ تم إنشاء الحصة! (${data.notifications_sent} طالب تم إشعارهم)`;
       status.style.color = 'var(--success)';
       showToast('✅ تم إنشاء الحصة');
       document.getElementById('live-title').value = '';
@@ -326,59 +616,47 @@ async function loadRecordings() {
   const r = await fetch('/api/recordings');
   const list = await r.json();
   const container = document.getElementById('recordings-list');
-
   if (!list.length) {
     container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا توجد تسجيلات</div>';
     return;
   }
 
   const totalSize = list.reduce((acc, r) => acc + (r.size || 0), 0);
-  container.innerHTML = `<div style="text-align:center;color:var(--text-light);margin-bottom:12px;font-size:.85rem">
-    📦 ${list.length} تسجيل — الحجم الكلي: ${(totalSize / 1024).toFixed(1)} KB
-  </div>`;
+  container.innerHTML = `<div style="text-align:center;color:var(--text-light);margin-bottom:12px;font-size:.85rem">📦 ${list.length} تسجيل — ${(totalSize / 1024).toFixed(1)} KB</div>`;
 
   list.forEach(rec => {
+    const isVideo = (rec.mimetype || '').includes('video');
     const div = document.createElement('div');
     div.className = 'question-item';
-    const isVideo = (rec.mimetype || '').includes('video');
     div.innerHTML = `
-      <h3>${isVideo ? '🎥' : '🎙️'} ${rec.filename.slice(0, 30)}...
+      <h3>${isVideo ? '🎥' : '🎙️'} ${rec.filename.slice(0, 25)}...
         <span class="badge ${rec.kind === 'audio' ? 'pending' : 'answered'}">${rec.kind === 'audio' ? 'صوتي' : 'مرئي'}</span>
       </h3>
       <div class="meta">👤 ${rec.uploader_name || 'غير معروف'}</div>
       <div class="meta">📅 ${new Date(rec.created_at).toLocaleString('ar-EG')}</div>
       <div class="meta">📦 ${(rec.size / 1024).toFixed(1)} KB</div>
-      ${rec.question_id ? `<div class="meta">📝 سؤال رقم: ${rec.question_id}</div>` : ''}
-      ${rec.answer_id ? `<div class="meta">💬 إجابة رقم: ${rec.answer_id}</div>` : ''}
       <div style="margin-top:8px">
-        ${isVideo
-          ? `<video controls src="${rec.url}" style="width:100%; border-radius:8px; max-height:180px"></video>`
-          : `<audio controls src="${rec.url}" style="width:100%"></audio>`}
+        ${isVideo ? `<video controls src="${rec.url}" style="width:100%;border-radius:8px;max-height:180px"></video>`
+                  : `<audio controls src="${rec.url}" style="width:100%"></audio>`}
       </div>
       <div class="modal-actions" style="margin-top:10px">
         <a href="${rec.url}" download class="btn-search" style="text-decoration:none; padding:8px 14px">⬇️ تنزيل</a>
-        <button class="btn-danger delete-rec" data-id="${rec.id}" data-url="${rec.url}" type="button">🗑️ حذف</button>
+        <button class="btn-danger delete-rec" data-id="${rec.id}" type="button">🗑️ حذف</button>
       </div>
     `;
     div.querySelector('.delete-rec').onclick = async (e) => {
       e.stopPropagation();
-      if (!confirm('حذف هذا التسجيل نهائياً من السيرفر؟')) return;
+      if (!confirm('حذف هذا التسجيل نهائياً؟')) return;
       const id = e.target.dataset.id;
       const resp = await fetch('/api/recordings/' + id, { method: 'DELETE' });
-      const data = await resp.json();
-      if (data.ok) {
-        showToast('✅ تم الحذف');
-        loadRecordings();
-      } else {
-        showToast('❌ فشل الحذف');
-      }
+      if ((await resp.json()).ok) { showToast('✅ تم الحذف'); loadRecordings(); }
     };
     container.appendChild(div);
   });
 }
 
 /* ============================================================
-   الطلاب
+   الطلاب + الفصول
    ============================================================ */
 async function loadStudents() {
   const r = await fetch('/api/allowed-students');
@@ -386,9 +664,10 @@ async function loadStudents() {
   document.getElementById('students-count').textContent = list.length;
   const container = document.getElementById('students-list');
   if (!list.length) {
-    container.innerHTML = '<div style="text-align:center; color:var(--text-light); padding:20px">لا يوجد طلاب</div>';
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا يوجد طلاب</div>';
     return;
   }
+
   container.innerHTML = '';
   list.forEach(s => {
     const div = document.createElement('div');
@@ -401,8 +680,7 @@ async function loadStudents() {
       </div>
       <button class="remove-btn" data-id="${s.id}" type="button">🗑️</button>
     `;
-    div.querySelector('.remove-btn').onclick = async (e) => {
-      e.stopPropagation();
+    div.querySelector('.remove-btn').onclick = async () => {
       if (!confirm(`حذف "${s.name}"؟`)) return;
       await fetch('/api/allowed-students/' + s.id, { method: 'DELETE' });
       showToast('✅ تم الحذف');
@@ -421,8 +699,7 @@ async function loadSettings() {
 
 document.getElementById('restrict-toggle').onchange = async (e) => {
   await fetch('/api/settings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key: 'restrict_students', value: e.target.checked ? '1' : '0' })
   });
   showToast(e.target.checked ? '🔒 تم التفعيل' : '🔓 تم الفتح');
@@ -431,53 +708,35 @@ document.getElementById('restrict-toggle').onchange = async (e) => {
 document.getElementById('save-code-btn').onclick = async () => {
   const code = document.getElementById('teacher-code-input').value.trim();
   await fetch('/api/settings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key: 'teacher_code', value: code })
   });
   const status = document.getElementById('code-status');
-  if (code) {
-    status.textContent = '✅ تم تفعيل حماية الرمز';
-    status.style.color = 'var(--success)';
-  } else {
-    status.textContent = '🔓 تم إلغاء الحماية';
-    status.style.color = 'var(--warning)';
-  }
+  if (code) { status.textContent = '✅ تم تفعيل الحماية'; status.style.color = 'var(--success)'; }
+  else { status.textContent = '🔓 تم الإلغاء'; status.style.color = 'var(--warning)'; }
   showToast('✅ تم الحفظ');
 };
 
 document.getElementById('add-student-btn').onclick = async () => {
-  const nameInput = document.getElementById('new-student-name');
-  const emailInput = document.getElementById('new-student-email');
+  const name = document.getElementById('new-student-name').value.trim();
+  const email = document.getElementById('new-student-email').value.trim();
   const classSelect = document.getElementById('new-student-class');
-  const name = nameInput.value.trim();
-  const email = emailInput.value.trim();
   if (!name) return showToast('اكتب اسم الطالب');
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showToast('البريد غير صحيح');
 
   const r = await fetch('/api/allowed-students', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name, email: email || null,
-      added_by: user.id,
-      class_id: classSelect.value ? parseInt(classSelect.value) : null
-    })
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email: email || null, added_by: user.id, class_id: classSelect.value ? parseInt(classSelect.value) : null })
   });
   const data = await r.json();
   if (data.ok) {
     showToast('✅ تمت الإضافة');
-    nameInput.value = '';
-    emailInput.value = '';
+    document.getElementById('new-student-name').value = '';
+    document.getElementById('new-student-email').value = '';
     loadStudents();
-  } else {
-    showToast('❌ ' + (data.error || 'فشل'));
-  }
+  } else showToast('❌ ' + (data.error || 'فشل'));
 };
 
-/* ============================================================
-   الفصول
-   ============================================================ */
 async function loadClasses() {
   const r = await fetch('/api/classes');
   allClasses = await r.json();
@@ -491,17 +750,12 @@ async function loadClasses() {
     allClasses.forEach(c => {
       const div = document.createElement('div');
       div.className = 'student-row';
-      div.innerHTML = `
-        <div style="flex:1">
-          <div class="student-name">📚 ${c.name}</div>
-        </div>
-        <button class="remove-btn" data-id="${c.id}" type="button">🗑️</button>
-      `;
-      div.querySelector('.remove-btn').onclick = async (e) => {
-        e.stopPropagation();
+      div.innerHTML = `<div style="flex:1"><div class="student-name">📚 ${c.name}</div></div>
+        <button class="remove-btn" data-id="${c.id}" type="button">🗑️</button>`;
+      div.querySelector('.remove-btn').onclick = async () => {
         if (!confirm(`حذف "${c.name}"؟`)) return;
-        const r = await fetch('/api/classes/' + c.id, { method: 'DELETE' });
-        const data = await r.json();
+        const resp = await fetch('/api/classes/' + c.id, { method: 'DELETE' });
+        const data = await resp.json();
         if (data.ok) { showToast('✅ تم الحذف'); loadClasses(); }
         else showToast('❌ ' + (data.error || 'فشل'));
       };
@@ -513,15 +767,17 @@ async function loadClasses() {
   document.getElementById('new-student-class').innerHTML = `<option value="">بدون فصل</option>${options}`;
   document.getElementById('filter-class').innerHTML = `<option value="">كل الفصول</option>${options}`;
   document.getElementById('live-class').innerHTML = `<option value="">كل الطلاب</option>${options}`;
+  document.getElementById('exam-class').innerHTML = `<option value="">كل الطلاب</option>${options}`;
+  document.getElementById('poll-class').innerHTML = `<option value="">كل الطلاب</option>${options}`;
 }
 
 document.getElementById('add-class-btn').onclick = async () => {
   const input = document.getElementById('new-class-name');
   const name = input.value.trim();
   if (!name) return showToast('اكتب اسم الفصل');
+
   const r = await fetch('/api/classes', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name })
   });
   const data = await r.json();
@@ -536,23 +792,28 @@ async function loadStats() {
   const r = await fetch('/api/stats');
   const s = await r.json();
   const container = document.getElementById('stats-content');
+
   container.innerHTML = `
     <div class="stats-grid">
       <div class="stat-card blue"><div class="stat-value">${s.questions}</div><div class="stat-label">📋 الأسئلة</div></div>
       <div class="stat-card green"><div class="stat-value">${s.answered}</div><div class="stat-label">✅ تم الرد</div></div>
-      <div class="stat-card orange"><div class="stat-value">${s.pending}</div><div class="stat-label">⏳ قيد الانتظار</div></div>
+      <div class="stat-card orange"><div class="stat-value">${s.pending}</div><div class="stat-label">⏳ انتظار</div></div>
       <div class="stat-card purple"><div class="stat-value">${s.students}</div><div class="stat-label">👨‍🎓 الطلاب</div></div>
-      <div class="stat-card teal"><div class="stat-value">${s.allowed_students}</div><div class="stat-label">✅ مصرّح لهم</div></div>
+      <div class="stat-card teal"><div class="stat-value">${s.allowed_students}</div><div class="stat-label">✅ مصرّح</div></div>
       <div class="stat-card pink"><div class="stat-value">${s.classes}</div><div class="stat-label">📚 الفصول</div></div>
-      <div class="stat-card blue"><div class="stat-value">${s.recordings}</div><div class="stat-label">🎙️ التسجيلات</div></div>
-      <div class="stat-card purple"><div class="stat-value">${(s.recordings_size / 1024 / 1024).toFixed(1)}</div><div class="stat-label">💾 مساحة (MB)</div></div>
-      <div class="stat-card orange"><div class="stat-value">${s.live_sessions}</div><div class="stat-label">🔴 حصص نشطة</div></div>
+      <div class="stat-card blue"><div class="stat-value">${s.recordings}</div><div class="stat-label">🎙️ تسجيلات</div></div>
+      <div class="stat-card purple"><div class="stat-value">${(s.recordings_size / 1024 / 1024).toFixed(1)}</div><div class="stat-label">💾 MB</div></div>
+      <div class="stat-card orange"><div class="stat-value">${s.live_sessions}</div><div class="stat-label">🔴 حصص</div></div>
+      <div class="stat-card green"><div class="stat-value">${s.exams}</div><div class="stat-label">📝 امتحانات</div></div>
+      <div class="stat-card pink"><div class="stat-value">${s.polls}</div><div class="stat-label">📊 استطلاعات</div></div>
+      <div class="stat-card teal"><div class="stat-value">${s.push_subscriptions || 0}</div><div class="stat-label">🔔 مشتركين</div></div>
     </div>
     <div class="card" style="margin-top:14px">
       <h2>🏆 أنشط الطلاب</h2>
       <div id="top-students"></div>
     </div>
   `;
+
   const topContainer = container.querySelector('#top-students');
   if (!s.top_students || !s.top_students.length) {
     topContainer.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا بيانات</div>';
@@ -572,13 +833,15 @@ async function loadStats() {
 /* ============================================================
    التبويبات
    ============================================================ */
-const tabs = ['questions', 'live', 'recordings', 'students', 'classes', 'search', 'stats'];
+const tabs = ['questions', 'exams', 'polls', 'live', 'recordings', 'students', 'classes', 'search', 'stats'];
+
 tabs.forEach(t => {
   document.getElementById('tab-' + t).onclick = () => {
     tabs.forEach(x => {
       document.getElementById('tab-' + x).classList.toggle('active', x === t);
       document.getElementById('view-' + x).style.display = x === t ? 'block' : 'none';
     });
+
     if (t === 'search' && !document.getElementById('teacher-search').dataset.init) {
       document.getElementById('teacher-search').dataset.init = '1';
       renderSearchResults(document.getElementById('teacher-search'), '_teacher');
@@ -588,6 +851,8 @@ tabs.forEach(t => {
     if (t === 'stats') loadStats();
     if (t === 'recordings') loadRecordings();
     if (t === 'live') { loadLiveSessions(); loadClasses(); }
+    if (t === 'exams') { loadExams(); loadClasses(); }
+    if (t === 'polls') { loadPolls(); loadClasses(); }
   };
 });
 
@@ -596,8 +861,72 @@ document.getElementById('filter-class').onchange = loadQuestions;
 document.getElementById('filter-status').onchange = loadQuestions;
 document.getElementById('refresh-live-btn').onclick = loadLiveSessions;
 document.getElementById('refresh-recordings-btn').onclick = loadRecordings;
+document.getElementById('refresh-exams-btn').onclick = loadExams;
+document.getElementById('refresh-polls-btn').onclick = loadPolls;
 
+/* ============================================================
+   تشغيل
+   ============================================================ */
 loadQuestions();
 loadClasses();
+renderExamBuilder();
+renderPollBuilder();
 setInterval(loadQuestions, 30000);
 setInterval(loadLiveSessions, 60000);
+
+/* ============================================================
+   تفعيل الإشعارات - طلب إذن + اشتراك
+   ============================================================ */
+(async function initPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    console.warn('Push غير مدعوم');
+    return;
+  }
+
+  try {
+    await navigator.serviceWorker.ready;
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) {
+      console.log('✅ اشتراك push موجود');
+      return;
+    }
+
+    setTimeout(async () => {
+      if (Notification.permission === 'granted') {
+        const u = JSON.parse(localStorage.getItem('user') || 'null');
+        if (u && u.id) await PushClient.subscribeToPush(u.id);
+      } else if (Notification.permission !== 'denied') {
+        const box = document.createElement('div');
+        box.style.cssText = 'position:fixed; bottom:80px; left:16px; right:16px; background:linear-gradient(135deg,#fef3c7,#fde68a); border:3px solid #f59e0b; border-radius:18px; padding:16px; z-index:3000; box-shadow:0 10px 30px rgba(245,158,11,.3); text-align:center;';
+        box.innerHTML = `
+          <div style="font-weight:800; color:#78350f; margin-bottom:10px; font-size:1rem">🔔 فعّل الإشعارات</div>
+          <div style="font-size:.85rem; color:#92400e; margin-bottom:12px; line-height:1.6">
+            لتصلك إشعارات الحصص المباشرة والامتحانات فوراً، حتى لو كان التطبيق مغلقاً.
+          </div>
+          <button id="enable-push-btn" style="background:linear-gradient(180deg,#f59e0b,#d97706); padding:12px 24px; border-radius:12px; color:#fff; font-weight:800; border:none; box-shadow:0 4px 0 #92400e; cursor:pointer">
+            ✅ تفعيل الآن
+          </button>
+          <button id="dismiss-push-btn" style="background:transparent; border:none; color:#92400e; margin-top:8px; cursor:pointer; font-size:.85rem; font-weight:600">لاحقاً</button>
+        `;
+        document.body.appendChild(box);
+
+        document.getElementById('enable-push-btn').onclick = async () => {
+          const u = JSON.parse(localStorage.getItem('user') || 'null');
+          if (!u || !u.id) return;
+          const ok = await PushClient.subscribeToPush(u.id);
+          if (ok) {
+            box.innerHTML = '<div style="font-weight:800; color:#065f46; font-size:1rem">✅ تم تفعيل الإشعارات!</div>';
+            setTimeout(() => box.remove(), 2000);
+          } else {
+            box.innerHTML = '<div style="font-weight:800; color:#991b1b; font-size:1rem">⚠️ تعذّر التفعيل</div>';
+            setTimeout(() => box.remove(), 4000);
+          }
+        };
+        document.getElementById('dismiss-push-btn').onclick = () => box.remove();
+      }
+    }, 2500);
+  } catch (e) {
+    console.error('Push init error:', e);
+  }
+})();
