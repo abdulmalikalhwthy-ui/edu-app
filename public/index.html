@@ -8,9 +8,7 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <header>
-    <h1>📚 تطبيق السؤال المعرفي</h1>
-  </header>
+  <header><h1>📚 تطبيق السؤال المعرفي</h1></header>
 
   <main>
     <div class="card login-box">
@@ -22,6 +20,7 @@
       </div>
 
       <input type="text" id="name" placeholder="اكتب اسمك الكامل" autocomplete="off">
+      <input type="email" id="email" placeholder="البريد الإلكتروني (اختياري)" autocomplete="off" style="direction:ltr; text-align:left">
 
       <div id="teacher-code-wrap" style="display:none">
         <input type="password" id="teacher-code" placeholder="🔐 رمز الأستاذ السري" autocomplete="off">
@@ -40,6 +39,7 @@
     const statusEl = document.getElementById('login-status');
     const codeWrap = document.getElementById('teacher-code-wrap');
     const codeInput = document.getElementById('teacher-code');
+    const emailInput = document.getElementById('email');
 
     roleStudent.onclick = () => {
       role = 'student';
@@ -62,6 +62,8 @@
 
     async function doLogin() {
       const name = nameInput.value.trim();
+      const email = emailInput.value.trim();
+
       if (!name) {
         statusEl.textContent = '⚠️ اكتب اسمك أولاً';
         statusEl.style.color = 'var(--warning)';
@@ -73,15 +75,19 @@
         statusEl.style.color = 'var(--warning)';
         return;
       }
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        statusEl.textContent = '⚠️ البريد الإلكتروني غير صحيح';
+        statusEl.style.color = 'var(--warning)';
+        return;
+      }
 
       loginBtn.disabled = true;
       const originalHTML = loginBtn.innerHTML;
       loginBtn.innerHTML = '⏳ جاري الدخول...';
       statusEl.textContent = '';
-      statusEl.style.color = '';
 
       try {
-        const body = { name, role };
+        const body = { name, email, role };
         if (role === 'teacher') body.teacher_code = codeInput.value;
 
         const r = await fetch('/api/login', {
@@ -89,36 +95,27 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
-
         const data = await r.json();
 
         if (!r.ok) {
-          if (data.error === 'not_allowed') {
-            statusEl.textContent = '🚫 ' + (data.message || 'لم يُصرّح لك بالتسجيل');
-          } else if (data.error === 'wrong_code') {
-            statusEl.textContent = '🔐 ' + (data.message || 'رمز الأستاذ غير صحيح');
-            codeInput.value = '';
-            codeInput.focus();
-          } else {
-            statusEl.textContent = '❌ ' + (data.error || 'فشل تسجيل الدخول');
-          }
+          if (data.error === 'not_allowed') statusEl.textContent = '🚫 ' + (data.message || 'لم يُصرّح لك');
+          else if (data.error === 'wrong_code') { statusEl.textContent = '🔐 ' + (data.message || 'رمز خاطئ'); codeInput.value = ''; codeInput.focus(); }
+          else statusEl.textContent = '❌ ' + (data.error || 'فشل الدخول');
           statusEl.style.color = 'var(--danger)';
           loginBtn.disabled = false;
           loginBtn.innerHTML = originalHTML;
           return;
         }
 
-        statusEl.textContent = '✅ تم تسجيل الدخول، جاري التحويل...';
+        statusEl.textContent = '✅ تم تسجيل الدخول...';
         statusEl.style.color = 'var(--success)';
         localStorage.setItem('user', JSON.stringify(data));
 
         setTimeout(() => {
           window.location.href = role === 'student' ? 'student.html' : 'teacher.html';
         }, 400);
-
       } catch (err) {
-        console.error('Login error:', err);
-        statusEl.textContent = '❌ خطأ في الاتصال بالخادم';
+        statusEl.textContent = '❌ خطأ في الاتصال';
         statusEl.style.color = 'var(--danger)';
         loginBtn.disabled = false;
         loginBtn.innerHTML = originalHTML;
@@ -126,22 +123,18 @@
     }
 
     loginBtn.onclick = doLogin;
-    nameInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); doLogin(); }
-    });
-    codeInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); doLogin(); }
-    });
+    nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doLogin(); } });
+    emailInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doLogin(); } });
+    codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doLogin(); } });
 
-    (function checkExistingLogin() {
+    (function restore() {
       try {
         const saved = localStorage.getItem('user');
         if (saved) {
           const u = JSON.parse(saved);
           if (u && u.role) {
-            statusEl.textContent = '👋 مرحباً بعودتك يا ' + u.name;
-            statusEl.style.color = 'var(--primary)';
             nameInput.value = u.name;
+            if (u.email) emailInput.value = u.email;
             role = u.role;
             roleStudent.classList.toggle('active', u.role === 'student');
             roleTeacher.classList.toggle('active', u.role === 'teacher');
