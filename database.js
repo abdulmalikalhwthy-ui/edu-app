@@ -5,6 +5,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    email TEXT,
     role TEXT NOT NULL CHECK(role IN ('student','teacher')),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -58,6 +59,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS allowed_students (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE NOT NULL,
+    email TEXT,
     class_id INTEGER,
     added_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -69,13 +71,38 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS recordings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    filename TEXT NOT NULL,
+    url TEXT NOT NULL,
+    mimetype TEXT,
+    size INTEGER,
+    kind TEXT,
+    question_id INTEGER,
+    answer_id INTEGER,
+    uploaded_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS live_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_name TEXT UNIQUE NOT NULL,
+    room_link TEXT NOT NULL,
+    password TEXT,
+    teacher_id INTEGER NOT NULL,
+    class_id INTEGER,
+    title TEXT,
+    status TEXT DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ended_at DATETIME,
+    FOREIGN KEY(teacher_id) REFERENCES users(id),
+    FOREIGN KEY(class_id) REFERENCES classes(id)
+  );
 `);
 
-// إعدادات افتراضية
 db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('restrict_students', '0')`).run();
 db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('teacher_code', '')`).run();
-
-// فصل افتراضي عام
 db.prepare(`INSERT OR IGNORE INTO classes (name, description) VALUES ('عام', 'الفصل الافتراضي')`).run();
 
 module.exports = db;
