@@ -1,7 +1,7 @@
 /* ============================================================
    student.js — شاشة الطالب الكاملة
    يشمل: صياغة السؤال، الأسئلة، الامتحانات، الاستطلاعات،
-          الإشعارات، والتنبيه بالحصص المباشرة (مع إشعار محلي)
+          الإشعارات، التنبيه بالحصص المباشرة، والرنين القوي
    ============================================================ */
 
 const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -28,6 +28,136 @@ const FIELDS = [
 const audioUrls = {};
 let classesList = [];
 let lastNotifiedSessionId = null;
+
+/* ============================================================
+   نظام الرنين القوي
+   ============================================================ */
+let ringtoneAudio = null;
+let ringtoneVibrateLoop = null;
+let ringtoneActive = false;
+
+function startRingtone() {
+  if (ringtoneActive) return;
+  ringtoneActive = true;
+
+  try {
+    // إنشاء عنصر الصوت مرة واحدة
+    if (!ringtoneAudio) {
+      ringtoneAudio = new Audio('/ring.mp3');
+      ringtoneAudio.loop = true;
+      ringtoneAudio.volume = 1.0;
+      ringtoneAudio.preload = 'auto';
+    }
+
+    // محاولة التشغيل
+    const playPromise = ringtoneAudio.play();
+    if (playPromise) {
+      playPromise.catch(err => {
+        console.warn('الصوت محظور من المتصفح - ينتظر تفاعل المستخدم');
+        // محاولة التشغيل عند أول نقرة
+        const unlock = () => {
+          if (ringtoneActive && ringtoneAudio) {
+            ringtoneAudio.play().catch(() => {});
+          }
+          document.removeEventListener('click', unlock);
+          document.removeEventListener('touchstart', unlock);
+        };
+        document.addEventListener('click', unlock);
+        document.addEventListener('touchstart', unlock);
+      });
+    }
+
+    // اهتزاز متكرر
+    const vibrate = () => {
+      if (navigator.vibrate) {
+        navigator.vibrate([800, 200, 800, 200, 800]);
+      }
+    };
+    vibrate();
+    ringtoneVibrateLoop = setInterval(vibrate, 1800);
+
+    // زر إيقاف الرنين
+    showStopRingButton();
+  } catch (e) {
+    console.error('Ring error:', e);
+  }
+}
+
+function stopRingtone() {
+  ringtoneActive = false;
+  if (ringtoneAudio) {
+    try {
+      ringtoneAudio.pause();
+      ringtoneAudio.currentTime = 0;
+    } catch (e) {}
+  }
+  if (ringtoneVibrateLoop) {
+    clearInterval(ringtoneVibrateLoop);
+    ringtoneVibrateLoop = null;
+  }
+  if (navigator.vibrate) navigator.vibrate(0);
+  hideStopRingButton();
+}
+
+function showStopRingButton() {
+  let btn = document.getElementById('stop-ring-btn');
+  if (btn) return;
+  btn = document.createElement('button');
+  btn.id = 'stop-ring-btn';
+  btn.type = 'button';
+  btn.innerHTML = '🔕 إيقاف الرنين';
+  btn.style.cssText = `
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(180deg, #ef4444, #b91c1c);
+    color: #fff;
+    font-weight: 900;
+    font-size: 1.05rem;
+    padding: 16px 32px;
+    border-radius: 50px;
+    border: 3px solid #fff;
+    box-shadow: 0 10px 40px rgba(220, 38, 38, 0.6), 0 0 0 6px rgba(220, 38, 38, 0.2);
+    z-index: 99999;
+    cursor: pointer;
+    animation: ringPulse 1s infinite;
+    font-family: inherit;
+  `;
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    stopRingtone();
+  };
+  document.body.appendChild(btn);
+}
+
+function hideStopRingButton() {
+  const btn = document.getElementById('stop-ring-btn');
+  if (btn) btn.remove();
+}
+
+// إضافة CSS للرنين
+(function addRingStyles() {
+  if (document.getElementById('ring-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'ring-styles';
+  style.textContent = `
+    @keyframes ringPulse {
+      0%, 100% {
+        transform: translateX(-50%) scale(1);
+        box-shadow: 0 10px 40px rgba(220, 38, 38, 0.6), 0 0 0 6px rgba(220, 38, 38, 0.2);
+      }
+      50% {
+        transform: translateX(-50%) scale(1.08);
+        box-shadow: 0 10px 50px rgba(220, 38, 38, 0.9), 0 0 0 14px rgba(220, 38, 38, 0.35);
+      }
+    }
+  `;
+  document.head.appendChild(style);
+})();
+
+// إتاحة الإيقاف عالمياً
+window.stopRingtone = stopRingtone;
 
 /* ============================================================
    تحميل الفصول
@@ -563,7 +693,7 @@ if (notifBadge) {
 }
 
 /* ============================================================
-   زر تفعيل الإشعارات اليدوي
+   زر تفعيل الإشعارات
    ============================================================ */
 const enableNotifBtn = document.getElementById('enable-notifications');
 
@@ -615,14 +745,12 @@ if (enableNotifBtn) {
     enableNotifBtn.textContent = '⏳...';
 
     try {
-      // اطلب الإذن
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
         enableNotifBtn.textContent = '🔔 تفعيل';
         return showToast('❌ لم يتم منح الإذن');
       }
 
-      // اشترك في Push
       if (window.PushClient && window.PushClient.subscribeToPush) {
         const ok = await PushClient.subscribeToPush(user.id);
         if (ok) {
@@ -632,7 +760,7 @@ if (enableNotifBtn) {
         } else {
           enableNotifBtn.textContent = '✅ مفعّل';
           enableNotifBtn.style.background = 'rgba(16,185,129,.5)';
-          showToast('✅ تم منح الإذن (بدون Push)');
+          showToast('✅ تم منح الإذن');
         }
       } else {
         enableNotifBtn.textContent = '✅ مفعّل';
@@ -648,7 +776,7 @@ if (enableNotifBtn) {
 }
 
 /* ============================================================
-   التنبيه بالحصة المباشرة + إشعار محلي
+   التنبيه بالحصة المباشرة (مع رنين)
    ============================================================ */
 async function checkLiveSessions() {
   try {
@@ -659,29 +787,29 @@ async function checkLiveSessions() {
     if (sessions.length > 0) {
       const latest = sessions[0];
 
-      // عرض الشريط داخل التطبيق
       if (alertBox) {
         alertBox.style.display = 'block';
         alertBox.innerHTML = `
           <span>🔴 <b>${latest.title}</b> — بدأ الأستاذ ${latest.teacher_name} حصة مباشرة الآن!</span>
           <a href="${latest.room_link}${latest.password ? '#config.callPassword=' + encodeURIComponent(latest.password) : ''}" target="_blank"
-             class="btn-submit" style="display:block; text-decoration:none; text-align:center; margin-top:10px; padding:12px">
+             class="btn-submit" style="display:block; text-decoration:none; text-align:center; margin-top:10px; padding:12px"
+             onclick="if(window.stopRingtone) window.stopRingtone();">
              🚪 دخول القاعة
           </a>
           ${latest.password ? `<div style="text-align:center; margin-top:8px; font-size:.85rem">🔐 كلمة المرور: <b style="font-family:monospace; color:var(--danger)">${latest.password}</b></div>` : ''}
         `;
       }
 
-      // إشعار محلي على مستوى النظام
+      // حصة جديدة → تشغيل الرنين
       if (latest.id !== lastNotifiedSessionId) {
         lastNotifiedSessionId = latest.id;
 
+        // ✅ رنين قوي متكرر
+        startRingtone();
+
+        // إشعار النظام
         if ('Notification' in window && Notification.permission === 'granted') {
           try {
-            if (navigator.vibrate) {
-              navigator.vibrate([800, 200, 800, 200, 800]);
-            }
-
             const reg = await navigator.serviceWorker.getRegistration();
             if (reg && reg.showNotification) {
               await reg.showNotification('🔴 حصة مباشرة الآن!', {
@@ -703,27 +831,26 @@ async function checkLiveSessions() {
                 },
                 actions: [
                   { action: 'join', title: '🚪 دخول القاعة' },
-                  { action: 'close', title: 'لاحقاً' }
+                  { action: 'close', title: 'إيقاف' }
                 ]
-              });
-              console.log('✅ تم إرسال الإشعار المحلي');
-            } else {
-              new Notification('🔴 حصة مباشرة الآن!', {
-                body: `${latest.title} — انقر للانضمام`,
-                icon: '/icon-192.png',
-                tag: 'live-session-' + latest.id
               });
             }
           } catch (e) {
-            console.error('Local notification error:', e);
+            console.error('Notification error:', e);
           }
         }
       }
     } else {
+      // لا حصص نشطة
       if (alertBox) alertBox.style.display = 'none';
+      if (lastNotifiedSessionId !== null) {
+        stopRingtone();
+      }
       lastNotifiedSessionId = null;
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error('checkLiveSessions error:', e);
+  }
 }
 
 /* ============================================================
@@ -754,6 +881,13 @@ const refreshPollsBtn = document.getElementById('refresh-polls');
 if (refreshPollsBtn) refreshPollsBtn.onclick = loadPolls;
 
 /* ============================================================
+   إيقاف الرنين عند إغلاق الصفحة
+   ============================================================ */
+window.addEventListener('beforeunload', () => {
+  stopRingtone();
+});
+
+/* ============================================================
    تشغيل
    ============================================================ */
 buildForm();
@@ -764,7 +898,7 @@ setInterval(loadNotifications, 30000);
 setInterval(checkLiveSessions, 20000);
 
 /* ============================================================
-   تفعيل الإشعارات - طلب إذن + اشتراك (تلقائي)
+   تفعيل الإشعارات تلقائياً
    ============================================================ */
 (async function initPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -789,7 +923,7 @@ setInterval(checkLiveSessions, 20000);
         }
       } else if (Notification.permission !== 'denied') {
         const box = document.createElement('div');
-        box.style.cssText = 'position:fixed; bottom:80px; left:16px; right:16px; background:linear-gradient(135deg,#fef3c7,#fde68a); border:3px solid #f59e0b; border-radius:18px; padding:16px; z-index:3000; box-shadow:0 10px 30px rgba(245,158,11,.3); text-align:center;';
+        box.style.cssText = 'position:fixed; bottom:100px; left:16px; right:16px; background:linear-gradient(135deg,#fef3c7,#fde68a); border:3px solid #f59e0b; border-radius:18px; padding:16px; z-index:3000; box-shadow:0 10px 30px rgba(245,158,11,.3); text-align:center;';
         box.innerHTML = `
           <div style="font-weight:800; color:#78350f; margin-bottom:10px; font-size:1rem">🔔 فعّل الإشعارات</div>
           <div style="font-size:.85rem; color:#92400e; margin-bottom:12px; line-height:1.6">
