@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>تطبيق السؤال المعرفي</title>
   <link rel="stylesheet" href="css/style.css">
+  <link rel="manifest" href="manifest.json">
 </head>
 <body>
   <header>
@@ -69,7 +70,6 @@
         return;
       }
 
-      // حالة التحميل
       loginBtn.disabled = true;
       const originalHTML = loginBtn.innerHTML;
       loginBtn.innerHTML = '⏳ جاري الدخول...';
@@ -86,7 +86,6 @@
         const data = await r.json();
 
         if (!r.ok) {
-          // التحقق من خطأ "غير مصرّح"
           if (data.error === 'not_allowed') {
             statusEl.textContent = '🚫 ' + (data.message || 'لم يُصرّح لك بالتسجيل. تواصل مع الأستاذ.');
             statusEl.style.color = 'var(--danger)';
@@ -100,7 +99,6 @@
           return;
         }
 
-        // نجاح
         statusEl.textContent = '✅ تم تسجيل الدخول، جاري التحويل...';
         statusEl.style.color = 'var(--success)';
         localStorage.setItem('user', JSON.stringify(data));
@@ -120,7 +118,6 @@
 
     loginBtn.onclick = doLogin;
 
-    /* تسجيل الدخول بمفتاح Enter */
     nameInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -135,7 +132,6 @@
         if (saved) {
           const u = JSON.parse(saved);
           if (u && u.role) {
-            // إذا كان هناك مستخدم محفوظ، اعرض تنبيهاً
             statusEl.textContent = '👋 مرحباً بعودتك يا ' + u.name;
             statusEl.style.color = 'var(--primary)';
             nameInput.value = u.name;
@@ -144,12 +140,9 @@
             roleTeacher.classList.toggle('active', u.role === 'teacher');
           }
         }
-      } catch (e) {
-        // تجاهل الأخطاء
-      }
+      } catch (e) {}
     })();
 
-    /* ============ تركيز تلقائي على حقل الاسم ============ */
     setTimeout(() => nameInput.focus(), 300);
   </script>
 </body>
