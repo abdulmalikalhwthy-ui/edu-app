@@ -558,3 +558,128 @@ button:disabled { opacity: .6; cursor: not-allowed; }
 }
 .add-student-form input { flex: 1; margin: 0; }
 .add-student-form button { white-space: nowrap; }
+/* ============================================================
+   إضافات جديدة (statistics, classes, teacher code)
+   ============================================================ */
+
+/* تبويبات قابلة للتمرير */
+.tabs-scroll {
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.tabs-scroll::-webkit-scrollbar { height: 4px; }
+.tabs-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+.tabs-scroll button {
+  flex-shrink: 0;
+  min-width: 95px;
+  font-size: 0.85rem;
+  padding: 10px 12px;
+}
+
+/* صف الفلترة */
+.filter-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.filter-row select {
+  padding: 8px 12px;
+  font-size: 0.88rem;
+  border-radius: 10px;
+}
+
+/* بطاقات الإحصائيات */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.stat-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 18px 14px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  border: 2px solid transparent;
+  transition: transform 0.2s;
+}
+.stat-card:hover { transform: translateY(-3px); }
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 900;
+  line-height: 1.2;
+  margin-bottom: 6px;
+}
+.stat-label {
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.stat-card.blue { border-color: #3b82f6; }
+.stat-card.blue .stat-value { color: #2563eb; }
+
+.stat-card.green { border-color: #10b981; }
+.stat-card.green .stat-value { color: #059669; }
+
+.stat-card.orange { border-color: #f59e0b; }
+.stat-card.orange .stat-value { color: #d97706; }
+
+.stat-card.purple { border-color: #8b5cf6; }
+.stat-card.purple .stat-value { color: #7c3aed; }
+
+.stat-card.teal { border-color: #14b8a6; }
+.stat-card.teal .stat-value { color: #0d9488; }
+
+.stat-card.pink { border-color: #ec4899; }
+.stat-card.pink .stat-value { color: #db2777; }
+
+/* حقل رمز الأستاذ */
+#teacher-code-wrap {
+  margin-bottom: 14px;
+  animation: slideDown 0.3s ease;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+#teacher-code {
+  text-align: center;
+  font-family: monospace;
+  letter-spacing: 4px;
+  font-weight: 700;
+}
+
+/* نموذج إضافة طالب */
+.add-student-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.add-student-form input,
+.add-student-form select {
+  flex: 1;
+  min-width: 120px;
+  margin: 0;
+}
+.add-student-form button {
+  white-space: nowrap;
+  padding: 12px 18px;
+}
+
+/* أيقونة التطبيق على الشاشة */
+@media (max-width: 480px) {
+  .stat-value { font-size: 1.6rem; }
+  .stat-card { padding: 14px 10px; }
+  .tabs-scroll button { min-width: 80px; padding: 8px 10px; font-size: 0.8rem; }
+}
