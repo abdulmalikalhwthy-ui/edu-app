@@ -12,14 +12,20 @@
     <h1>👨‍🎓 شاشة الطالب</h1>
     <div>
       <span class="user" id="user-name"></span>
+      <span id="notif-badge" class="badge pending" style="display:none; cursor:pointer; margin-inline-end:8px">🔔 <span id="notif-count">0</span></span>
       <a href="#" id="logout">خروج</a>
     </div>
   </header>
 
   <main>
-    <div class="tabs">
-      <button id="tab-form" class="active" type="button">✍️ صياغة سؤال جديد</button>
+    <div id="live-alert" style="display:none" class="live-alert"></div>
+
+    <div class="tabs tabs-scroll">
+      <button id="tab-form" class="active" type="button">✍️ سؤال جديد</button>
       <button id="tab-list" type="button">📋 أسئلتي</button>
+      <button id="tab-exams" type="button">📝 الامتحانات</button>
+      <button id="tab-polls" type="button">📊 الاستطلاعات</button>
+      <button id="tab-notifs" type="button">🔔 الإشعارات</button>
     </div>
 
     <div id="view-form">
@@ -32,9 +38,34 @@
     <div id="view-list" style="display:none">
       <div id="questions-list"></div>
     </div>
+
+    <div id="view-exams" style="display:none">
+      <div class="card">
+        <h2>📝 الامتحانات المتاحة</h2>
+        <button id="refresh-exams" type="button">🔄 تحديث</button>
+        <div id="exams-list" style="margin-top:14px"></div>
+      </div>
+    </div>
+
+    <div id="view-polls" style="display:none">
+      <div class="card">
+        <h2>📊 الاستطلاعات النشطة</h2>
+        <button id="refresh-polls" type="button">🔄 تحديث</button>
+        <div id="polls-list" style="margin-top:14px"></div>
+      </div>
+    </div>
+
+    <div id="view-notifs" style="display:none">
+      <div class="card">
+        <h2>🔔 الإشعارات</h2>
+        <button id="read-all" type="button">✅ تحديد الكل كمقروء</button>
+        <div id="notifs-list" style="margin-top:14px"></div>
+      </div>
+    </div>
   </main>
 
   <script src="js/recorder.js"></script>
+  <script src="js/push-client.js"></script>
   <script src="js/student.js"></script>
 </body>
 </html>
