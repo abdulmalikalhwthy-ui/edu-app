@@ -6,6 +6,7 @@
   <title>شاشة الأستاذ</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="manifest" href="manifest.json">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
   <header>
@@ -17,20 +18,34 @@
   </header>
 
   <main>
-    <div class="tabs">
+    <div class="tabs tabs-scroll">
       <button id="tab-questions" class="active" type="button">📋 الأسئلة</button>
       <button id="tab-search" type="button">🔎 البحث</button>
       <button id="tab-students" type="button">👥 الطلاب</button>
+      <button id="tab-classes" type="button">📚 الفصول</button>
+      <button id="tab-stats" type="button">📊 الإحصائيات</button>
     </div>
 
+    <!-- الأسئلة -->
     <div id="view-questions">
       <div class="card">
         <h2>آخر الأسئلة الواردة</h2>
-        <button id="refresh-btn" type="button">🔄 تحديث</button>
+        <div class="filter-row">
+          <button id="refresh-btn" type="button">🔄 تحديث</button>
+          <select id="filter-class" style="flex:1">
+            <option value="">كل الفصول</option>
+          </select>
+          <select id="filter-status" style="flex:1">
+            <option value="">كل الحالات</option>
+            <option value="pending">قيد الانتظار</option>
+            <option value="answered">تم الرد</option>
+          </select>
+        </div>
         <div id="questions-list" style="margin-top:14px"></div>
       </div>
     </div>
 
+    <!-- البحث -->
     <div id="view-search" style="display:none">
       <div class="card">
         <h2>محرك البحث في الآيات والروايات</h2>
@@ -38,6 +53,7 @@
       </div>
     </div>
 
+    <!-- الطلاب -->
     <div id="view-students" style="display:none">
       <div class="card">
         <h2>⚙️ التحكم بتسجيل الطلاب</h2>
@@ -47,15 +63,28 @@
             قصر التسجيل على الطلاب المصرّح لهم فقط
           </label>
           <p style="font-size:.85rem; color:var(--text-light); margin-top:6px">
-            عندما يكون مُفعّلاً، لن يستطيع أي طالب التسجيل إلا إذا أُضيف اسمه في القائمة أدناه.
+            عندما يكون مُفعّلاً، لن يستطيع أي طالب التسجيل إلا إذا أُضيف اسمه أدناه.
           </p>
         </div>
+      </div>
+
+      <div class="card">
+        <h2>🔐 رمز الأستاذ (كلمة المرور)</h2>
+        <p style="font-size:.85rem; color:var(--text-light); margin-bottom:10px">
+          اتركه فارغاً لإلغاء الحماية. سيُطلب من الأستاذ إدخاله عند تسجيل الدخول.
+        </p>
+        <div class="add-student-form">
+          <input type="text" id="teacher-code-input" placeholder="رمز سري قوي...">
+          <button id="save-code-btn" type="button">💾 حفظ</button>
+        </div>
+        <div id="code-status" style="margin-top:8px; font-size:.9rem;"></div>
       </div>
 
       <div class="card">
         <h2>📝 إضافة طالب جديد</h2>
         <div class="add-student-form">
           <input type="text" id="new-student-name" placeholder="اسم الطالب الكامل...">
+          <select id="new-student-class"></select>
           <button id="add-student-btn" type="button">➕ إضافة</button>
         </div>
       </div>
@@ -64,6 +93,26 @@
         <h2>👥 قائمة الطلاب المصرّح لهم (<span id="students-count">0</span>)</h2>
         <div id="students-list"></div>
       </div>
+    </div>
+
+    <!-- الفصول -->
+    <div id="view-classes" style="display:none">
+      <div class="card">
+        <h2>➕ إضافة فصل جديد</h2>
+        <div class="add-student-form">
+          <input type="text" id="new-class-name" placeholder="اسم الفصل (مثل: الفصل الأول)">
+          <button id="add-class-btn" type="button">➕ إضافة</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>📚 قائمة الفصول (<span id="classes-count">0</span>)</h2>
+        <div id="classes-list"></div>
+      </div>
+    </div>
+
+    <!-- الإحصائيات -->
+    <div id="view-stats" style="display:none">
+      <div id="stats-content"></div>
     </div>
   </main>
 
