@@ -1,5 +1,7 @@
 /* ============================================================
-   student.js — شاشة الطالب (مطوّرة)
+   student.js — شاشة الطالب الكاملة
+   يشمل: صياغة السؤال، الأسئلة، الامتحانات، الاستطلاعات،
+          الإشعارات، والتنبيه بالحصص المباشرة + تفعيل Push
    ============================================================ */
 
 const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -26,7 +28,9 @@ const FIELDS = [
 const audioUrls = {};
 let classesList = [];
 
-/* جلب الفصول */
+/* ============================================================
+   تحميل الفصول
+   ============================================================ */
 async function loadClasses() {
   try {
     const r = await fetch('/api/classes');
@@ -36,6 +40,9 @@ async function loadClasses() {
   }
 }
 
+/* ============================================================
+   بناء نموذج السؤال
+   ============================================================ */
 async function buildForm() {
   await loadClasses();
   const form = document.getElementById('question-form');
@@ -53,7 +60,6 @@ async function buildForm() {
         <option value="previous">ناتج درس سابق</option>
       </select>
     </div>
-
     <div class="field">
       <label>الفصل / الشعبة</label>
       <select name="class_id">${classesOptions}</select>
@@ -68,10 +74,8 @@ async function buildForm() {
       <textarea name="${f.key}_text" rows="3" placeholder="اكتب هنا..."></textarea>
       ${f.search ? `<button type="button" class="btn-search" data-key="${f.key}">🔍 بحث في القرآن والروايات</button>
                     <div class="search-area" data-key="${f.key}"></div>` : ''}
-      ${f.audio ? `
-        <button type="button" class="btn-toggle-audio" data-key="${f.key}">🎙️ إضافة تسجيل صوتي</button>
-        <div class="audio-container" data-key="${f.key}" style="display:none"></div>
-      ` : ''}
+      ${f.audio ? `<button type="button" class="btn-toggle-audio" data-key="${f.key}">🎙️ إضافة تسجيل صوتي</button>
+                   <div class="audio-container" data-key="${f.key}" style="display:none"></div>` : ''}
     `;
     form.appendChild(div);
   });
@@ -81,6 +85,7 @@ async function buildForm() {
     <div id="form-status" style="text-align:center; margin-top:8px"></div>
   `);
 
+  // أزرار التسجيل الصوتي
   form.querySelectorAll('.btn-toggle-audio').forEach(btn => {
     btn.onclick = () => {
       const key = btn.dataset.key;
@@ -93,7 +98,7 @@ async function buildForm() {
             video: false,
             onComplete: (url) => {
               audioUrls[key] = url;
-              showToast('✅ تم حفظ التسجيل الصوتي');
+              showToast('✅ تم حفظ التسجيل');
             }
           });
         }
@@ -101,6 +106,7 @@ async function buildForm() {
     };
   });
 
+  // أزرار البحث
   form.querySelectorAll('.btn-search').forEach(btn => {
     btn.onclick = () => {
       const key = btn.dataset.key;
@@ -118,6 +124,9 @@ async function buildForm() {
   form.onsubmit = submitQuestion;
 }
 
+/* ============================================================
+   إرسال السؤال
+   ============================================================ */
 async function submitQuestion(e) {
   e.preventDefault();
   const form = e.target;
@@ -134,10 +143,8 @@ async function submitQuestion(e) {
     if (audioUrls[f.key]) payload[`${f.key}_audio`] = audioUrls[f.key];
   });
 
-  payload.evidence_source = '';
-
   if (!payload.topic_text && !payload.topic_audio) {
-    status.textContent = '❌ يجب إدخال موضوع السؤال على الأقل';
+    status.textContent = '❌ يجب إدخال موضوع السؤال';
     status.style.color = 'var(--danger)';
     return;
   }
@@ -153,7 +160,7 @@ async function submitQuestion(e) {
     });
     const data = await r.json();
     if (data.ok) {
-      status.textContent = '✅ تم إرسال السؤال بنجاح';
+      status.textContent = '✅ تم الإرسال';
       status.style.color = 'var(--success)';
       showToast('✅ تم إرسال السؤال');
       setTimeout(() => {
@@ -166,21 +173,29 @@ async function submitQuestion(e) {
         });
         loadMyQuestions();
       }, 800);
+    } else {
+      status.textContent = '❌ ' + (data.error || 'فشل');
+      status.style.color = 'var(--danger)';
     }
   } catch (err) {
-    status.textContent = '❌ فشل الإرسال: ' + err.message;
+    status.textContent = '❌ فشل الإرسال';
     status.style.color = 'var(--danger)';
   }
 }
 
+/* ============================================================
+   قائمة أسئلتي
+   ============================================================ */
 async function loadMyQuestions() {
   const r = await fetch('/api/questions?student_id=' + user.id);
   const list = await r.json();
   const container = document.getElementById('questions-list');
+
   if (!list.length) {
     container.innerHTML = '<div class="card">لا توجد أسئلة بعد.</div>';
     return;
   }
+
   container.innerHTML = '';
   list.forEach(q => {
     const div = document.createElement('div');
@@ -193,35 +208,457 @@ async function loadMyQuestions() {
       ${q.class_name ? `<div class="meta">📚 ${q.class_name}</div>` : ''}
     `;
     if (q.answers && q.answers.length) {
-      q.answers.forEach(a => div.insertAdjacentHTML('beforeend', renderAnswerBlock(a)));
+      q.answers.forEach(a => {
+        let inner = `<div class="answer-block">
+          <div style="font-size:.85rem;color:#555">👨‍🏫 ${a.teacher_name} — ${new Date(a.created_at).toLocaleString('ar-EG')}</div>`;
+        if (a.answer_text) inner += `<p style="margin-top:6px">${a.answer_text}</p>`;
+        if (a.answer_audio) inner += `<audio controls src="${a.answer_audio}" style="margin-top:6px;width:100%"></audio>`;
+        if (a.answer_video) inner += `<video controls src="${a.answer_video}" style="margin-top:6px;width:100%"></video>`;
+        inner += `</div>`;
+        div.insertAdjacentHTML('beforeend', inner);
+      });
     }
     container.appendChild(div);
   });
 }
 
-function renderAnswerBlock(a) {
-  let inner = `<div class="answer-block">
-    <div style="font-size:.85rem; color:#555">👨‍🏫 ${a.teacher_name} — ${new Date(a.created_at).toLocaleString('ar-EG')}</div>`;
-  if (a.answer_text) inner += `<p style="margin-top:6px">${a.answer_text}</p>`;
-  if (a.answer_audio) inner += `<audio controls src="${a.answer_audio}" style="margin-top:6px; width:100%"></audio>`;
-  if (a.answer_video) inner += `<video controls src="${a.answer_video}" style="margin-top:6px; width:100%"></video>`;
-  if (a.is_live && a.room_link) inner += `<p style="margin-top:6px">🔴 جلسة مباشرة: <a href="${a.room_link}" target="_blank">${a.room_link}</a></p>`;
-  inner += `</div>`;
-  return inner;
+/* ============================================================
+   الامتحانات
+   ============================================================ */
+async function loadExams() {
+  const r = await fetch('/api/exams?status=published');
+  const list = await r.json();
+  const container = document.getElementById('exams-list');
+
+  if (!list.length) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا توجد امتحانات متاحة</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  for (const exam of list) {
+    const attemptResp = await fetch(`/api/exams/${exam.id}/my-attempt?student_id=${user.id}`);
+    const attempt = await attemptResp.json();
+
+    const div = document.createElement('div');
+    div.className = 'question-item';
+    div.innerHTML = `
+      <h3>📝 ${exam.title}
+        <span class="badge ${attempt ? 'answered' : 'pending'}">${attempt ? 'تم التقديم' : 'متاح'}</span>
+      </h3>
+      <div class="meta">👨‍🏫 ${exam.teacher_name}</div>
+      ${exam.class_name ? `<div class="meta">📚 ${exam.class_name}</div>` : ''}
+      <div class="meta">⏱️ ${exam.duration_minutes} دقيقة — 🎯 ${exam.total_points} نقطة</div>
+      ${exam.description ? `<div class="meta">${exam.description}</div>` : ''}
+      ${attempt ? `<div class="meta" style="color:var(--success);font-weight:900">🏆 نتيجتك: ${attempt.score} / ${attempt.max_score}</div>` : ''}
+      <button class="btn-submit start-exam" data-id="${exam.id}" type="button" style="margin-top:10px" ${attempt ? 'disabled' : ''}>
+        ${attempt ? '✅ تم التقديم' : '🚀 بدء الامتحان'}
+      </button>
+    `;
+    div.querySelector('.start-exam').onclick = () => startExam(exam.id);
+    container.appendChild(div);
+  }
 }
 
-document.getElementById('tab-form').onclick = () => {
-  document.getElementById('tab-form').classList.add('active');
-  document.getElementById('tab-list').classList.remove('active');
-  document.getElementById('view-form').style.display = 'block';
-  document.getElementById('view-list').style.display = 'none';
-};
-document.getElementById('tab-list').onclick = () => {
-  document.getElementById('tab-list').classList.add('active');
-  document.getElementById('tab-form').classList.remove('active');
-  document.getElementById('view-form').style.display = 'none';
-  document.getElementById('view-list').style.display = 'block';
-  loadMyQuestions();
+async function startExam(examId) {
+  if (!confirm('هل أنت مستعد لبدء الامتحان؟ سيبدأ العد التنازلي فوراً.')) return;
+
+  const r = await fetch('/api/exams/' + examId);
+  const exam = await r.json();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+
+  let questionsHtml = '';
+  exam.questions.forEach((q, i) => {
+    let optionsHtml = '';
+    if (q.question_type === 'mcq') {
+      optionsHtml = (q.options || []).map((opt, oi) => `
+        <label style="display:block; padding:10px; border:2px solid var(--border); border-radius:10px; margin-bottom:8px; cursor:pointer; background:#f8fafc">
+          <input type="radio" name="q${q.id}" value="${opt}" style="margin-inline-end:8px">
+          <b>${opt}</b>
+        </label>
+      `).join('');
+    } else if (q.question_type === 'truefalse') {
+      optionsHtml = `
+        <label style="display:block; padding:10px; border:2px solid var(--border); border-radius:10px; margin-bottom:8px; cursor:pointer">
+          <input type="radio" name="q${q.id}" value="صحيح" style="margin-inline-end:8px"> ✅ صحيح
+        </label>
+        <label style="display:block; padding:10px; border:2px solid var(--border); border-radius:10px; cursor:pointer">
+          <input type="radio" name="q${q.id}" value="خطأ" style="margin-inline-end:8px"> ❌ خطأ
+        </label>
+      `;
+    } else {
+      optionsHtml = `<textarea class="essay-answer" data-qid="${q.id}" rows="4" placeholder="اكتب إجابتك..."></textarea>`;
+    }
+    questionsHtml += `
+      <div class="field" data-qid="${q.id}" data-qtype="${q.question_type}" data-points="${q.points}">
+        <label>س${i + 1}: ${q.question_text} <span style="color:var(--primary);font-size:.85rem">(${q.points} نقطة)</span></label>
+        ${optionsHtml}
+      </div>
+    `;
+  });
+
+  backdrop.innerHTML = `
+    <div class="modal" style="max-width:800px">
+      <h2>📝 ${exam.title}</h2>
+      <div style="background:#fee2e2; padding:12px; border-radius:12px; text-align:center; margin-bottom:14px">
+        ⏱️ الوقت المتبقي: <b id="timer" style="font-size:1.4rem; font-family:monospace; color:var(--danger)">--:--</b>
+      </div>
+      <div id="exam-questions">${questionsHtml}</div>
+      <button id="submit-exam" class="btn-submit" type="button">📤 تسليم الامتحان</button>
+      <button id="close-exam" class="btn-danger" type="button" style="margin-top:8px; width:100%">إلغاء</button>
+      <div id="exam-status" style="text-align:center; margin-top:10px"></div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+
+  const totalSeconds = (exam.duration_minutes || 30) * 60;
+  let remaining = totalSeconds;
+  const timerEl = backdrop.querySelector('#timer');
+
+  const tick = () => {
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    timerEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    if (remaining <= 0) {
+      clearInterval(interval);
+      backdrop.querySelector('#submit-exam').click();
+    }
+    remaining--;
+  };
+  tick();
+  const interval = setInterval(tick, 1000);
+
+  backdrop.querySelector('#close-exam').onclick = () => {
+    if (!confirm('هل تريد إلغاء الامتحان؟ سيتم فقدان تقدمك.')) return;
+    clearInterval(interval);
+    backdrop.remove();
+  };
+
+  backdrop.querySelector('#submit-exam').onclick = async () => {
+    if (!confirm('هل أنت متأكد من تسليم الامتحان؟')) return;
+    clearInterval(interval);
+
+    const answers = {};
+    backdrop.querySelectorAll('#exam-questions .field').forEach(field => {
+      const qid = field.dataset.qid;
+      const qtype = field.dataset.qtype;
+      if (qtype === 'essay') {
+        const ta = field.querySelector('.essay-answer');
+        answers[qid] = ta ? ta.value.trim() : '';
+      } else {
+        const selected = field.querySelector(`input[name="q${qid}"]:checked`);
+        answers[qid] = selected ? selected.value : '';
+      }
+    });
+
+    const status = backdrop.querySelector('#exam-status');
+    status.textContent = '⏳ جاري التسليم...';
+    status.style.color = 'var(--text-light)';
+
+    try {
+      const r = await fetch(`/api/exams/${examId}/attempt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ student_id: user.id, answers })
+      });
+      const data = await r.json();
+      if (data.ok) {
+        backdrop.querySelector('#exam-questions').innerHTML = `
+          <div style="text-align:center; padding:30px; background:#d1fae5; border-radius:20px">
+            <div style="font-size:4rem">🎉</div>
+            <h2 style="color:#065f46">تم التسليم!</h2>
+            <div style="font-size:2.5rem; font-weight:900; color:#059669; margin:16px 0">
+              ${data.score} / ${data.max_score}
+            </div>
+            <p>نسبتك: <b>${Math.round(data.score / data.max_score * 100)}%</b></p>
+          </div>
+        `;
+        backdrop.querySelector('#submit-exam').style.display = 'none';
+        backdrop.querySelector('#close-exam').textContent = 'إغلاق';
+        backdrop.querySelector('#close-exam').onclick = () => {
+          backdrop.remove();
+          loadExams();
+        };
+        status.textContent = '';
+      } else {
+        status.textContent = '❌ ' + (data.error || 'فشل');
+        status.style.color = 'var(--danger)';
+      }
+    } catch (e) {
+      status.textContent = '❌ خطأ في الاتصال';
+      status.style.color = 'var(--danger)';
+    }
+  };
+}
+
+/* ============================================================
+   الاستطلاعات
+   ============================================================ */
+async function loadPolls() {
+  const r = await fetch('/api/polls?status=active');
+  const list = await r.json();
+  const container = document.getElementById('polls-list');
+
+  if (!list.length) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا توجد استطلاعات نشطة</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  for (const poll of list) {
+    const voteResp = await fetch(`/api/polls/${poll.id}/my-vote?student_id=${user.id}`);
+    const myVote = await voteResp.json();
+
+    const div = document.createElement('div');
+    div.className = 'question-item';
+
+    let optionsHtml = poll.options.map((opt, i) => {
+      const isSelected = myVote && myVote.choice_index === i;
+      return `
+        <label style="display:block; padding:12px; border:2px solid ${isSelected ? 'var(--success)' : 'var(--border)'}; border-radius:12px; margin-bottom:8px; cursor:${myVote ? 'default' : 'pointer'}; background:${isSelected ? '#d1fae5' : '#f8fafc'}">
+          ${myVote ? '' : `<input type="radio" name="poll${poll.id}" value="${i}" style="margin-inline-end:8px">`}
+          <b>${opt}</b>
+          ${isSelected ? '<span style="float:left; color:var(--success)">✅</span>' : ''}
+        </label>
+      `;
+    }).join('');
+
+    div.innerHTML = `
+      <h3>📊 ${poll.question}
+        <span class="badge ${myVote ? 'answered' : 'pending'}">${myVote ? 'صوّتت' : 'شارك الآن'}</span>
+      </h3>
+      <div class="meta">👨‍🏫 ${poll.teacher_name}</div>
+      <div style="margin-top:12px">${optionsHtml}</div>
+      ${myVote ? '' : `<button class="btn-submit submit-poll" data-id="${poll.id}" type="button">✅ إرسال التصويت</button>`}
+      <button class="btn-search show-results" data-id="${poll.id}" type="button" style="width:100%; margin-top:8px">📊 عرض النتائج</button>
+    `;
+
+    if (!myVote) {
+      div.querySelector('.submit-poll').onclick = async () => {
+        const sel = div.querySelector(`input[name="poll${poll.id}"]:checked`);
+        if (!sel) return showToast('اختر خياراً أولاً');
+        const r = await fetch(`/api/polls/${poll.id}/vote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ student_id: user.id, choice_index: parseInt(sel.value) })
+        });
+        const data = await r.json();
+        if (data.ok) {
+          showToast('✅ تم التصويت');
+          loadPolls();
+        } else {
+          showToast('❌ ' + (data.error || 'فشل'));
+        }
+      };
+    }
+
+    div.querySelector('.show-results').onclick = () => showPollResults(poll.id);
+    container.appendChild(div);
+  }
+}
+
+async function showPollResults(pollId) {
+  const r = await fetch(`/api/polls/${pollId}/results`);
+  const data = await r.json();
+  const { poll, results, total_votes } = data;
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+
+  let bars = results.map(r => {
+    const pct = total_votes ? Math.round(r.count / total_votes * 100) : 0;
+    return `
+      <div style="margin-bottom:12px">
+        <div style="display:flex; justify-content:space-between; margin-bottom:4px">
+          <b>${r.label}</b>
+          <span style="color:var(--text-light)">${r.count} صوت (${pct}%)</span>
+        </div>
+        <div style="background:#e2e8f0; border-radius:10px; height:24px; overflow:hidden">
+          <div style="background:linear-gradient(90deg, #2563eb, #7c3aed); height:100%; width:${pct}%; transition:width .5s; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700">
+            ${pct > 15 ? pct + '%' : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  backdrop.innerHTML = `
+    <div class="modal">
+      <h2>📊 ${poll.question}</h2>
+      <p style="text-align:center;color:var(--text-light);margin-bottom:16px">
+        إجمالي الأصوات: <b>${total_votes}</b>
+      </p>
+      ${bars}
+      <button id="close-results" class="btn-danger" type="button" style="width:100%;margin-top:14px">إغلاق</button>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.querySelector('#close-results').onclick = () => backdrop.remove();
+}
+
+/* ============================================================
+   الإشعارات
+   ============================================================ */
+async function loadNotifications() {
+  const r = await fetch(`/api/notifications?student_id=${user.id}`);
+  const list = await r.json();
+  const unread = list.filter(n => !n.is_read).length;
+
+  const badge = document.getElementById('notif-badge');
+  const countEl = document.getElementById('notif-count');
+  if (unread > 0) {
+    badge.style.display = 'inline-block';
+    countEl.textContent = unread;
+  } else {
+    badge.style.display = 'none';
+  }
+
+  const container = document.getElementById('notifs-list');
+  if (!list.length) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا توجد إشعارات</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  list.forEach(n => {
+    const div = document.createElement('div');
+    div.className = 'question-item';
+    div.style.opacity = n.is_read ? '0.6' : '1';
+    div.innerHTML = `
+      <div style="font-size:.95rem; font-weight:600">
+        ${n.is_read ? '✓' : '🔴'} ${n.message}
+      </div>
+      <div class="meta">📅 ${new Date(n.created_at).toLocaleString('ar-EG')}</div>
+    `;
+    container.appendChild(div);
+  });
+}
+
+document.getElementById('read-all').onclick = async () => {
+  await fetch('/api/notifications/read-all', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ student_id: user.id })
+  });
+  showToast('✅ تم تحديد الكل');
+  loadNotifications();
 };
 
+document.getElementById('notif-badge').onclick = () => {
+  document.getElementById('tab-notifs').click();
+};
+
+/* ============================================================
+   التنبيه بالحصة المباشرة
+   ============================================================ */
+async function checkLiveSessions() {
+  try {
+    const r = await fetch('/api/live-sessions');
+    const sessions = await r.json();
+    const alertBox = document.getElementById('live-alert');
+
+    if (sessions.length > 0) {
+      const latest = sessions[0];
+      alertBox.style.display = 'block';
+      alertBox.innerHTML = `
+        <span>🔴 <b>${latest.title}</b> — بدأ الأستاذ ${latest.teacher_name} حصة مباشرة الآن!</span>
+        <a href="${latest.room_link}${latest.password ? '#config.callPassword=' + encodeURIComponent(latest.password) : ''}" target="_blank"
+           class="btn-submit" style="display:block; text-decoration:none; text-align:center; margin-top:10px; padding:12px">
+           🚪 دخول القاعة
+        </a>
+        ${latest.password ? `<div style="text-align:center; margin-top:8px; font-size:.85rem">🔐 كلمة المرور: <b style="font-family:monospace; color:var(--danger)">${latest.password}</b></div>` : ''}
+      `;
+    } else {
+      alertBox.style.display = 'none';
+    }
+  } catch (e) {}
+}
+
+/* ============================================================
+   التبويبات
+   ============================================================ */
+const tabs = ['form', 'list', 'exams', 'polls', 'notifs'];
+tabs.forEach(t => {
+  document.getElementById('tab-' + t).onclick = () => {
+    tabs.forEach(x => {
+      document.getElementById('tab-' + x).classList.toggle('active', x === t);
+      document.getElementById('view-' + x).style.display = x === t ? 'block' : 'none';
+    });
+    if (t === 'list') loadMyQuestions();
+    if (t === 'exams') loadExams();
+    if (t === 'polls') loadPolls();
+    if (t === 'notifs') loadNotifications();
+  };
+});
+
+document.getElementById('refresh-exams').onclick = loadExams;
+document.getElementById('refresh-polls').onclick = loadPolls;
+
+/* ============================================================
+   تشغيل
+   ============================================================ */
 buildForm();
+loadNotifications();
+checkLiveSessions();
+
+setInterval(loadNotifications, 30000);
+setInterval(checkLiveSessions, 20000);
+
+/* ============================================================
+   تفعيل الإشعارات - طلب إذن + اشتراك
+   ============================================================ */
+(async function initPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    console.warn('Push غير مدعوم');
+    return;
+  }
+
+  try {
+    await navigator.serviceWorker.ready;
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) {
+      console.log('✅ اشتراك push موجود');
+      return;
+    }
+
+    setTimeout(async () => {
+      if (Notification.permission === 'granted') {
+        const u = JSON.parse(localStorage.getItem('user') || 'null');
+        if (u && u.id) await PushClient.subscribeToPush(u.id);
+      } else if (Notification.permission !== 'denied') {
+        const box = document.createElement('div');
+        box.style.cssText = 'position:fixed; bottom:80px; left:16px; right:16px; background:linear-gradient(135deg,#fef3c7,#fde68a); border:3px solid #f59e0b; border-radius:18px; padding:16px; z-index:3000; box-shadow:0 10px 30px rgba(245,158,11,.3); text-align:center;';
+        box.innerHTML = `
+          <div style="font-weight:800; color:#78350f; margin-bottom:10px; font-size:1rem">🔔 فعّل الإشعارات</div>
+          <div style="font-size:.85rem; color:#92400e; margin-bottom:12px; line-height:1.6">
+            لتصلك إشعارات الحصص المباشرة والامتحانات فوراً، حتى لو كان التطبيق مغلقاً.
+          </div>
+          <button id="enable-push-btn" style="background:linear-gradient(180deg,#f59e0b,#d97706); padding:12px 24px; border-radius:12px; color:#fff; font-weight:800; border:none; box-shadow:0 4px 0 #92400e; cursor:pointer">
+            ✅ تفعيل الآن
+          </button>
+          <button id="dismiss-push-btn" style="background:transparent; border:none; color:#92400e; margin-top:8px; cursor:pointer; font-size:.85rem; font-weight:600">لاحقاً</button>
+        `;
+        document.body.appendChild(box);
+
+        document.getElementById('enable-push-btn').onclick = async () => {
+          const u = JSON.parse(localStorage.getItem('user') || 'null');
+          if (!u || !u.id) return;
+          const ok = await PushClient.subscribeToPush(u.id);
+          if (ok) {
+            box.innerHTML = '<div style="font-weight:800; color:#065f46; font-size:1rem">✅ تم تفعيل الإشعارات!</div>';
+            setTimeout(() => box.remove(), 2000);
+          } else {
+            box.innerHTML = '<div style="font-weight:800; color:#991b1b; font-size:1rem">⚠️ تعذّر التفعيل. تأكد من السماح بالإشعارات في إعدادات المتصفح.</div>';
+            setTimeout(() => box.remove(), 4000);
+          }
+        };
+        document.getElementById('dismiss-push-btn').onclick = () => box.remove();
+      }
+    }, 2500);
+  } catch (e) {
+    console.error('Push init error:', e);
+  }
+})();
