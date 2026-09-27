@@ -20,7 +20,7 @@
       </div>
 
       <input type="text" id="name" placeholder="اكتب اسمك الكامل" autocomplete="off">
-      <input type="email" id="email" placeholder="البريد الإلكتروني (اختياري)" autocomplete="off" style="direction:ltr; text-align:left">
+      <input type="email" id="email" placeholder="البريد الإلكتروني (اختياري)" autocomplete="off">
 
       <div id="teacher-code-wrap" style="display:none">
         <input type="password" id="teacher-code" placeholder="🔐 رمز الأستاذ السري" autocomplete="off">
@@ -144,7 +144,12 @@
       } catch (e) {}
     })();
 
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(e => console.log('SW error:', e));
+    }
+
     setTimeout(() => nameInput.focus(), 300);
   </script>
+  <script src="js/push-client.js"></script>
 </body>
 </html>
