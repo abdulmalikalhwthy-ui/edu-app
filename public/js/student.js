@@ -1,8 +1,10 @@
-/* ============ إعدادات ============ */
+/* ============================================================
+   student.js — شاشة الطالب (مطوّرة)
+   ============================================================ */
+
 const user = JSON.parse(localStorage.getItem('user') || 'null');
-if (!user || user.role !== 'student') {
-  window.location.href = 'index.html';
-}
+if (!user || user.role !== 'student') window.location.href = 'index.html';
+
 document.getElementById('user-name').textContent = '👤 ' + user.name;
 document.getElementById('logout').onclick = (e) => {
   e.preventDefault();
@@ -10,7 +12,6 @@ document.getElementById('logout').onclick = (e) => {
   window.location.href = 'index.html';
 };
 
-/* ============ حقول النموذج ============ */
 const FIELDS = [
   { key: 'topic', num: '٢', label: 'موضوع السؤال', audio: true, text: true },
   { key: 'understanding', num: '٣', label: 'فهم الموضوع السابق', audio: true, text: true },
@@ -23,10 +24,27 @@ const FIELDS = [
 ];
 
 const audioUrls = {};
+let classesList = [];
 
-/* ============ بناء النموذج ============ */
-function buildForm() {
+/* جلب الفصول */
+async function loadClasses() {
+  try {
+    const r = await fetch('/api/classes');
+    classesList = await r.json();
+  } catch (e) {
+    classesList = [];
+  }
+}
+
+async function buildForm() {
+  await loadClasses();
   const form = document.getElementById('question-form');
+
+  let classesOptions = '<option value="">— اختر الفصل —</option>';
+  classesList.forEach(c => {
+    classesOptions += `<option value="${c.id}">${c.name}</option>`;
+  });
+
   form.innerHTML = `
     <div class="field">
       <label>١- نوع السؤال</label>
@@ -34,6 +52,11 @@ function buildForm() {
         <option value="new">جديد</option>
         <option value="previous">ناتج درس سابق</option>
       </select>
+    </div>
+
+    <div class="field">
+      <label>الفصل / الشعبة</label>
+      <select name="class_id">${classesOptions}</select>
     </div>
   `;
 
@@ -58,7 +81,6 @@ function buildForm() {
     <div id="form-status" style="text-align:center; margin-top:8px"></div>
   `);
 
-  // تفعيل أزرار التسجيل الصوتي
   form.querySelectorAll('.btn-toggle-audio').forEach(btn => {
     btn.onclick = () => {
       const key = btn.dataset.key;
@@ -75,13 +97,10 @@ function buildForm() {
             }
           });
         }
-      } else {
-        container.style.display = 'none';
-      }
+      } else container.style.display = 'none';
     };
   });
 
-  // تفعيل أزرار البحث
   form.querySelectorAll('.btn-search').forEach(btn => {
     btn.onclick = () => {
       const key = btn.dataset.key;
@@ -92,44 +111,39 @@ function buildForm() {
           area.dataset.init = '1';
           renderSearchResults(area, key);
         }
-      } else {
-        area.style.display = 'none';
-      }
+      } else area.style.display = 'none';
     };
   });
 
   form.onsubmit = submitQuestion;
 }
 
-/* ============ إرسال السؤال ============ */
 async function submitQuestion(e) {
   e.preventDefault();
   const form = e.target;
   const status = document.getElementById('form-status');
   const payload = { student_id: user.id };
 
-  // نوع السؤال
   payload.question_type = form.question_type.value;
+  const classSelect = form.querySelector('select[name="class_id"]');
+  if (classSelect && classSelect.value) payload.class_id = parseInt(classSelect.value);
 
-  // حقول النص
   FIELDS.forEach(f => {
     const ta = form.querySelector(`textarea[name="${f.key}_text"]`);
     if (ta && ta.value.trim()) payload[`${f.key}_text`] = ta.value.trim();
     if (audioUrls[f.key]) payload[`${f.key}_audio`] = audioUrls[f.key];
   });
 
-  // المادة الرابع (الدليل) قد تحتوي على مصدر - افتراضياً نتركها فارغة
   payload.evidence_source = '';
 
-  // التحقق من الحد الأدنى
   if (!payload.topic_text && !payload.topic_audio) {
     status.textContent = '❌ يجب إدخال موضوع السؤال على الأقل';
-    status.style.color = 'red';
+    status.style.color = 'var(--danger)';
     return;
   }
 
   status.textContent = '⏳ جاري الإرسال...';
-  status.style.color = '#666';
+  status.style.color = 'var(--text-light)';
 
   try {
     const r = await fetch('/api/questions', {
@@ -140,7 +154,7 @@ async function submitQuestion(e) {
     const data = await r.json();
     if (data.ok) {
       status.textContent = '✅ تم إرسال السؤال بنجاح';
-      status.style.color = 'green';
+      status.style.color = 'var(--success)';
       showToast('✅ تم إرسال السؤال');
       setTimeout(() => {
         form.reset();
@@ -152,16 +166,13 @@ async function submitQuestion(e) {
         });
         loadMyQuestions();
       }, 800);
-    } else {
-      throw new Error(data.error || 'فشل');
     }
   } catch (err) {
     status.textContent = '❌ فشل الإرسال: ' + err.message;
-    status.style.color = 'red';
+    status.style.color = 'var(--danger)';
   }
 }
 
-/* ============ قائمة أسئلتي ============ */
 async function loadMyQuestions() {
   const r = await fetch('/api/questions?student_id=' + user.id);
   const list = await r.json();
@@ -179,11 +190,10 @@ async function loadMyQuestions() {
         <span class="badge ${q.status}">${q.status === 'answered' ? 'تم الرد' : 'قيد الانتظار'}</span>
       </h3>
       <div class="meta">📅 ${new Date(q.created_at).toLocaleString('ar-EG')}</div>
+      ${q.class_name ? `<div class="meta">📚 ${q.class_name}</div>` : ''}
     `;
     if (q.answers && q.answers.length) {
-      q.answers.forEach(a => {
-        div.insertAdjacentHTML('beforeend', renderAnswerBlock(a));
-      });
+      q.answers.forEach(a => div.insertAdjacentHTML('beforeend', renderAnswerBlock(a)));
     }
     container.appendChild(div);
   });
@@ -200,7 +210,6 @@ function renderAnswerBlock(a) {
   return inner;
 }
 
-/* ============ التبويبات ============ */
 document.getElementById('tab-form').onclick = () => {
   document.getElementById('tab-form').classList.add('active');
   document.getElementById('tab-list').classList.remove('active');
@@ -215,5 +224,4 @@ document.getElementById('tab-list').onclick = () => {
   loadMyQuestions();
 };
 
-/* ============ تشغيل ============ */
 buildForm();
