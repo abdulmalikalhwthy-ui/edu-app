@@ -1,4 +1,7 @@
-/* أداة تسجيل الصوت/الفيديو وإرفاقه تلقائياً */
+/* ============================================================
+   recorder.js — نسخة محسّنة مع دعم أذونات أندرويد (WebView)
+   ============================================================ */
+
 class MediaRecorderHelper {
   constructor(container, options = {}) {
     this.container = container;
@@ -9,40 +12,99 @@ class MediaRecorderHelper {
   }
 
   build() {
+    const recLabel = this.video ? '🎥 بدء التسجيل المرئي' : '🎙️ بدء التسجيل الصوتي';
     this.container.innerHTML = `
-      <div class="recorder">
-        <button type="button" class="btn-rec">${this.video ? '🎥 بدء التسجيل المرئي' : '🎙️ بدء التسجيل الصوتي'}</button>
-        <button type="button" class="btn-stop" style="display:none">⏹️ إيقاف وإرسال</button>
-        <span class="timer" style="display:none">00:00</span>
-        <span class="status"></span>
+      <div class="recorder-box">
+        <div class="recorder-controls">
+          <button type="button" class="btn-rec">
+            <span class="rec-icon">●</span> ${recLabel}
+          </button>
+          <button type="button" class="btn-stop" style="display:none">
+            <span class="stop-icon">■</span> إيقاف وإرسال
+          </button>
+          <span class="timer" style="display:none">00:00</span>
+        </div>
+        <div class="status-line"></div>
         <div class="preview"></div>
       </div>
     `;
     this.btnRec = this.container.querySelector('.btn-rec');
     this.btnStop = this.container.querySelector('.btn-stop');
     this.timerEl = this.container.querySelector('.timer');
-    this.statusEl = this.container.querySelector('.status');
+    this.statusEl = this.container.querySelector('.status-line');
     this.previewEl = this.container.querySelector('.preview');
     this.btnRec.onclick = () => this.start();
     this.btnStop.onclick = () => this.stop();
   }
 
+  /* طلب إذن من نظام أندرويد عبر جسر WebIntoApp */
+  requestNativePermission(permType) {
+    return new Promise((resolve) => {
+      if (typeof window.Native === 'undefined' || !window.Native.call) {
+        resolve(true);
+        return;
+      }
+      try {
+        window.Native.call('permissions', {
+          action: 'ASK_FOR_PERMISSION',
+          payload: { permission: permType }
+        }, (response) => {
+          try {
+            const data = typeof response === 'string' ? JSON.parse(response) : response;
+            const status = data?.params?.permissionStatus
+              || data?.permissionStatus
+              || 'GRANTED';
+            resolve(status === 'GRANTED');
+          } catch (e) {
+            resolve(true);
+          }
+        });
+      } catch (e) {
+        resolve(true);
+      }
+    });
+  }
+
   async start() {
+    this.setStatus('⏳ جاري التحقق من الأذونات...');
+
+    const hasAudio = await this.requestNativePermission('AUDIO');
+    if (!hasAudio) {
+      this.setStatus('❌ لم يُمنح إذن الميكروفون. افتح الإعدادات واسمح بالوصول.', 'error');
+      this.showSettingsHint();
+      return;
+    }
+
+    if (this.video) {
+      const hasCam = await this.requestNativePermission('CAMERA');
+      if (!hasCam) {
+        this.setStatus('❌ لم يُمنح إذن الكاميرا.', 'error');
+        return;
+      }
+    }
+
+    this.setStatus('⏺️ جاري التشغيل...');
+
     try {
       const constraints = this.video
-        ? { audio: true, video: { facingMode: 'user' } }
-        : { audio: true };
+        ? { audio: true, video: { facingMode: 'user', width: { ideal: 640 } } }
+        : { audio: { echoCancellation: true, noiseSuppression: true } };
+
       this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      const mimeType = this.video ? 'video/webm' : 'audio/webm';
+      const options = MediaRecorder.isTypeSupported(mimeType) ? { mimeType } : {};
+
       this.chunks = [];
-      this.rec = new MediaRecorder(this.stream);
+      this.rec = new MediaRecorder(this.stream, options);
       this.rec.ondataavailable = e => e.data.size && this.chunks.push(e.data);
       this.rec.onstop = () => this.finish();
       this.rec.start();
 
       this.btnRec.style.display = 'none';
-      this.btnStop.style.display = 'inline-block';
+      this.btnStop.style.display = 'inline-flex';
       this.timerEl.style.display = 'inline-block';
-      this.statusEl.textContent = '⏺️ جاري التسجيل...';
+      this.setStatus('🔴 جاري التسجيل...', 'recording');
 
       this.startTime = Date.now();
       this.timer = setInterval(() => {
@@ -52,9 +114,12 @@ class MediaRecorderHelper {
           String(s % 60).padStart(2, '0');
         if (s >= this.maxSeconds) this.stop();
       }, 1000);
-    } catch (e) {
-      this.statusEl.textContent = '❌ لا يمكن الوصول للميكروفون/الكاميرا';
-      console.error(e);
+    } catch (err) {
+      console.error('Recorder error:', err);
+      let msg = '❌ تعذّر الوصول للميكروفون';
+      if (err.name === 'NotAllowedError') msg = '❌ الإذن مرفوض';
+      else if (err.name === 'NotFoundError') msg = '❌ لا يوجد ميكروفون';
+      this.setStatus(msg, 'error');
     }
   }
 
@@ -69,41 +134,55 @@ class MediaRecorderHelper {
       type: this.video ? 'video/webm' : 'audio/webm'
     });
     const url = URL.createObjectURL(blob);
+
     this.previewEl.innerHTML = '';
     if (this.video) {
       const v = document.createElement('video');
-      v.src = url; v.controls = true; v.style.maxWidth = '100%';
+      v.src = url; v.controls = true; v.className = 'preview-media';
       this.previewEl.appendChild(v);
     } else {
       const a = document.createElement('audio');
-      a.src = url; a.controls = true;
+      a.src = url; a.controls = true; a.className = 'preview-media';
       this.previewEl.appendChild(a);
     }
 
-    this.btnRec.style.display = 'inline-block';
-    this.btnRec.textContent = '🔄 إعادة التسجيل';
+    this.btnRec.style.display = 'inline-flex';
+    this.btnRec.innerHTML = '<span class="rec-icon">↻</span> إعادة التسجيل';
     this.btnStop.style.display = 'none';
-    this.statusEl.textContent = '⬆️ جاري الرفع...';
+    this.setStatus('⬆️ جاري الرفع...');
 
     try {
       const fd = new FormData();
       fd.append('file', blob, 'rec-' + Date.now() + '.webm');
       const r = await fetch('/api/upload', { method: 'POST', body: fd });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
       if (data.url) {
-        this.statusEl.textContent = '✅ تم الرفع';
+        this.setStatus('✅ تم الرفع بنجاح', 'success');
         this.onComplete(data.url);
       } else {
         throw new Error('no url');
       }
-    } catch (e) {
-      this.statusEl.textContent = '❌ فشل الرفع';
-      console.error(e);
+    } catch (err) {
+      console.error('Upload failed:', err);
+      this.setStatus('❌ فشل الرفع، أعد المحاولة', 'error');
     }
+  }
+
+  setStatus(msg, type = '') {
+    this.statusEl.textContent = msg;
+    this.statusEl.className = 'status-line ' + type;
+  }
+
+  showSettingsHint() {
+    const hint = document.createElement('div');
+    hint.className = 'perm-hint';
+    hint.innerHTML = '⚙️ اذهب لإعدادات الهاتف → التطبيقات → <b>alsoaalmaarfi</b> → الأذونات → فعّل الميكروفون';
+    this.container.appendChild(hint);
   }
 }
 
-/* Toast بسيط */
+/* ========== إشعار Toast ========== */
 function showToast(msg, ms = 2500) {
   const t = document.createElement('div');
   t.className = 'toast';
@@ -112,12 +191,12 @@ function showToast(msg, ms = 2500) {
   setTimeout(() => t.remove(), ms);
 }
 
-/* محرك البحث (قرآن + روايات) - مشترك */
+/* ========== محرك البحث ========== */
 function renderSearchResults(containerEl, key) {
   containerEl.innerHTML = `
-    <div style="display:flex; gap:6px; margin-top:6px">
-      <input type="text" class="search-q" placeholder="اكتب كلمة للبحث..." style="flex:1">
-      <button type="button" class="btn-do-search">🔍</button>
+    <div class="search-bar">
+      <input type="text" class="search-q" placeholder="اكتب كلمة للبحث في القرآن والروايات...">
+      <button type="button" class="btn-do-search">🔍 بحث</button>
     </div>
     <div class="search-results" style="display:none"></div>
   `;
@@ -129,41 +208,36 @@ function renderSearchResults(containerEl, key) {
     const q = input.value.trim();
     if (!q) return;
     results.style.display = 'block';
-    results.innerHTML = '<div class="item">جاري البحث...</div>';
+    results.innerHTML = '<div class="item loading">⏳ جاري البحث...</div>';
     try {
       const [qur, had] = await Promise.all([
         fetch('/api/search/quran?q=' + encodeURIComponent(q)).then(r => r.json()),
         fetch('/api/search/hadith?q=' + encodeURIComponent(q)).then(r => r.json())
       ]);
       let html = '';
-      (qur.matches || []).forEach(m => {
-        html += `<div class="item" data-text="${escapeAttr(m.text)}">
-          <span class="ref">📖 ${m.reference}</span>
-          ${m.text}
-        </div>`;
-      });
+      if ((qur.matches || []).length) {
+        html += `<div class="results-header">📖 نتائج القرآن</div>`;
+        (qur.matches || []).forEach(m => {
+          html += `<div class="item" data-text="${escapeAttr(m.text)}">
+            <span class="ref">${m.reference}</span>
+            ${m.text}
+          </div>`;
+        });
+      }
       if (had.html) {
-        html += `<div style="font-size:.85rem; font-weight:bold; margin:8px 0">📚 الروايات:</div>`;
+        html += `<div class="results-header">📚 نتائج الروايات</div>`;
         html += `<div class="item">${had.html}</div>`;
       }
-      if (!html) html = '<div class="item">لا نتائج</div>';
+      if (!html) html = '<div class="item">لا توجد نتائج</div>';
       results.innerHTML = html;
-      // عند النقر على نتيجة، تُنسخ إلى textarea
       results.querySelectorAll('.item[data-text]').forEach(el => {
         el.onclick = () => {
           const ta = document.querySelector(`textarea[name="${key}_text"]`);
-          if (ta) {
-            ta.value = el.dataset.text;
-            showToast('✅ تم إدراج النص');
-          }
-          const snippetTa = document.querySelector('textarea[name="evidence_snippet_text"]');
-          if (snippetTa && key === 'evidence') {
-            snippetTa.value = el.dataset.text.slice(0, 100);
-          }
+          if (ta) { ta.value = el.dataset.text; showToast('✅ تم إدراج النص'); }
         };
       });
     } catch (e) {
-      results.innerHTML = '<div class="item">فشل البحث</div>';
+      results.innerHTML = '<div class="item">❌ فشل البحث</div>';
     }
   };
 
