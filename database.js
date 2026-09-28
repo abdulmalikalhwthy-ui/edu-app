@@ -171,6 +171,21 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS calls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_user_id INTEGER NOT NULL,
+    to_user_id INTEGER NOT NULL,
+    room_name TEXT NOT NULL,
+    room_link TEXT NOT NULL,
+    call_type TEXT DEFAULT 'video',
+    status TEXT DEFAULT 'ringing',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    answered_at DATETIME,
+    ended_at DATETIME,
+    FOREIGN KEY(from_user_id) REFERENCES users(id),
+    FOREIGN KEY(to_user_id) REFERENCES users(id)
+  );
 `);
 
 db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('restrict_students', '0')`).run();
