@@ -1,7 +1,7 @@
 /* ============================================================
    teacher.js — شاشة الأستاذ الكاملة
    يشمل: الأسئلة، الامتحانات، الاستطلاعات، الحصص المباشرة،
-          التسجيلات، الطلاب، الفصول، البحث، الإحصائيات + Push
+          التسجيلات، الطلاب، الفصول، البحث، الإحصائيات، المكالمات
    ============================================================ */
 
 const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -15,6 +15,100 @@ document.getElementById('logout').onclick = (e) => {
 };
 
 let allClasses = [];
+
+/* ============================================================
+   نظام الرنين القوي للأستاذ
+   ============================================================ */
+let ringtoneAudio = null;
+let ringtoneVibrateLoop = null;
+let ringtoneActive = false;
+let lastNotifiedSessionId = null;
+
+function startRingtone() {
+  if (ringtoneActive) return;
+  ringtoneActive = true;
+  try {
+    if (!ringtoneAudio) {
+      ringtoneAudio = new Audio('/ring.mp3');
+      ringtoneAudio.loop = true;
+      ringtoneAudio.volume = 1.0;
+      ringtoneAudio.preload = 'auto';
+    }
+    const playPromise = ringtoneAudio.play();
+    if (playPromise) {
+      playPromise.catch(() => {
+        const unlock = () => {
+          if (ringtoneActive && ringtoneAudio) ringtoneAudio.play().catch(() => {});
+          document.removeEventListener('click', unlock);
+          document.removeEventListener('touchstart', unlock);
+        };
+        document.addEventListener('click', unlock);
+        document.addEventListener('touchstart', unlock);
+      });
+    }
+    const vibrate = () => {
+      if (navigator.vibrate) navigator.vibrate([800, 200, 800, 200, 800]);
+    };
+    vibrate();
+    ringtoneVibrateLoop = setInterval(vibrate, 1800);
+    showStopRingButton();
+  } catch (e) {}
+}
+
+function stopRingtone() {
+  ringtoneActive = false;
+  if (ringtoneAudio) {
+    try {
+      ringtoneAudio.pause();
+      ringtoneAudio.currentTime = 0;
+    } catch (e) {}
+  }
+  if (ringtoneVibrateLoop) {
+    clearInterval(ringtoneVibrateLoop);
+    ringtoneVibrateLoop = null;
+  }
+  if (navigator.vibrate) navigator.vibrate(0);
+  hideStopRingButton();
+}
+
+function showStopRingButton() {
+  let btn = document.getElementById('stop-ring-btn');
+  if (btn) return;
+  btn = document.createElement('button');
+  btn.id = 'stop-ring-btn';
+  btn.type = 'button';
+  btn.innerHTML = '🔕 إيقاف الرنين';
+  btn.style.cssText = `
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    background: linear-gradient(180deg, #ef4444, #b91c1c);
+    color: #fff; font-weight: 900; font-size: 1.05rem;
+    padding: 16px 32px; border-radius: 50px; border: 3px solid #fff;
+    box-shadow: 0 10px 40px rgba(220, 38, 38, 0.6), 0 0 0 6px rgba(220, 38, 38, 0.2);
+    z-index: 99999; cursor: pointer; animation: ringPulse 1s infinite; font-family: inherit;
+  `;
+  btn.onclick = (e) => { e.stopPropagation(); stopRingtone(); };
+  document.body.appendChild(btn);
+}
+
+function hideStopRingButton() {
+  const btn = document.getElementById('stop-ring-btn');
+  if (btn) btn.remove();
+}
+
+(function addRingStyles() {
+  if (document.getElementById('ring-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'ring-styles';
+  style.textContent = `
+    @keyframes ringPulse {
+      0%, 100% { transform: translateX(-50%) scale(1); box-shadow: 0 10px 40px rgba(220, 38, 38, 0.6), 0 0 0 6px rgba(220, 38, 38, 0.2); }
+      50% { transform: translateX(-50%) scale(1.08); box-shadow: 0 10px 50px rgba(220, 38, 38, 0.9), 0 0 0 14px rgba(220, 38, 38, 0.35); }
+    }
+  `;
+  document.head.appendChild(style);
+})();
+
+window.stopRingtone = stopRingtone;
 
 /* ============================================================
    الأسئلة
@@ -77,7 +171,7 @@ function openQuestionModal(q) {
       </div>
       <div class="modal-actions">
         <button id="export-pdf" class="btn-search">📄 PDF</button>
-        <button id="send-answer" class="btn-submit" style="flex:1">📤 إرسال الرد</button>
+        <button id="send-answer" class="btn-submit" style="flex:1">📤 إرسال</button>
         <button id="close-modal" class="btn-danger">إغلاق</button>
       </div>
       <div id="answer-status" style="text-align:center; margin-top:10px"></div>
@@ -228,7 +322,7 @@ function exportQuestionPDF(q) {
 }
 
 /* ============================================================
-   بناء الامتحان
+   الامتحانات
    ============================================================ */
 let examQuestions = [];
 
@@ -309,11 +403,10 @@ document.getElementById('create-exam-btn').onclick = async () => {
   const statusEl = document.getElementById('exam-status');
 
   if (!title) { statusEl.textContent = '⚠️ اكتب عنوان الامتحان'; statusEl.style.color = 'var(--warning)'; return; }
-  if (!examQuestions.length) { statusEl.textContent = '⚠️ أضف سؤالاً واحداً'; statusEl.style.color = 'var(--warning)'; return; }
+  if (!examQuestions.length) { statusEl.textContent = '⚠️ أضف سؤالاً'; statusEl.style.color = 'var(--warning)'; return; }
   if (examQuestions.some(q => !q.question_text.trim())) { statusEl.textContent = '⚠️ بعض الأسئلة بدون نص'; statusEl.style.color = 'var(--warning)'; return; }
 
   statusEl.textContent = '⏳ جاري الإنشاء...';
-  statusEl.style.color = 'var(--text-light)';
 
   try {
     const r = await fetch('/api/exams', {
@@ -419,7 +512,7 @@ async function viewExamAttempts(examId, title) {
 }
 
 /* ============================================================
-   بناء الاستطلاع
+   الاستطلاعات
    ============================================================ */
 let pollOptions = ['', ''];
 
@@ -519,9 +612,9 @@ async function loadPolls() {
     div.innerHTML = `
       <h3>📊 ${poll.question} <span class="badge ${poll.status === 'active' ? 'answered' : 'pending'}">${poll.status === 'active' ? 'نشط' : 'منتهي'}</span></h3>
       <div class="meta">📅 ${new Date(poll.created_at).toLocaleString('ar-EG')}</div>
-      <div class="meta">🗳️ إجمالي الأصوات: <b>${total_votes}</b></div>
+      <div class="meta">🗳️ إجمالي: <b>${total_votes}</b></div>
       <div style="margin-top:12px">${bars}</div>
-      ${poll.status === 'active' ? `<button class="btn-danger end-poll" data-id="${poll.id}" type="button" style="margin-top:10px; width:100%">⏹️ إنهاء الاستطلاع</button>` : ''}
+      ${poll.status === 'active' ? `<button class="btn-danger end-poll" data-id="${poll.id}" type="button" style="margin-top:10px; width:100%">⏹️ إنهاء</button>` : ''}
     `;
     const endBtn = div.querySelector('.end-poll');
     if (endBtn) endBtn.onclick = async () => {
@@ -807,6 +900,7 @@ async function loadStats() {
       <div class="stat-card green"><div class="stat-value">${s.exams}</div><div class="stat-label">📝 امتحانات</div></div>
       <div class="stat-card pink"><div class="stat-value">${s.polls}</div><div class="stat-label">📊 استطلاعات</div></div>
       <div class="stat-card teal"><div class="stat-value">${s.push_subscriptions || 0}</div><div class="stat-label">🔔 مشتركين</div></div>
+      <div class="stat-card blue"><div class="stat-value">${s.calls || 0}</div><div class="stat-label">📞 مكالمات</div></div>
     </div>
     <div class="card" style="margin-top:14px">
       <h2>🏆 أنشط الطلاب</h2>
@@ -833,13 +927,17 @@ async function loadStats() {
 /* ============================================================
    التبويبات
    ============================================================ */
-const tabs = ['questions', 'exams', 'polls', 'live', 'recordings', 'students', 'classes', 'search', 'stats'];
+const tabs = ['questions', 'exams', 'polls', 'live', 'recordings', 'students', 'classes', 'search', 'stats', 'calls'];
 
 tabs.forEach(t => {
-  document.getElementById('tab-' + t).onclick = () => {
+  const tabEl = document.getElementById('tab-' + t);
+  if (!tabEl) return;
+  tabEl.onclick = () => {
     tabs.forEach(x => {
-      document.getElementById('tab-' + x).classList.toggle('active', x === t);
-      document.getElementById('view-' + x).style.display = x === t ? 'block' : 'none';
+      const tb = document.getElementById('tab-' + x);
+      const vw = document.getElementById('view-' + x);
+      if (tb) tb.classList.toggle('active', x === t);
+      if (vw) vw.style.display = x === t ? 'block' : 'none';
     });
 
     if (t === 'search' && !document.getElementById('teacher-search').dataset.init) {
@@ -853,6 +951,9 @@ tabs.forEach(t => {
     if (t === 'live') { loadLiveSessions(); loadClasses(); }
     if (t === 'exams') { loadExams(); loadClasses(); }
     if (t === 'polls') { loadPolls(); loadClasses(); }
+    if (t === 'calls' && window.CallsApp) {
+      window.CallsApp.loadContacts(document.getElementById('contacts-list'));
+    }
   };
 });
 
@@ -865,6 +966,14 @@ document.getElementById('refresh-exams-btn').onclick = loadExams;
 document.getElementById('refresh-polls-btn').onclick = loadPolls;
 
 /* ============================================================
+   فحص الحصص المباشرة للأستاذ (بدون رنين لنفس الأستاذ)
+   ============================================================ */
+async function checkLiveSessionsForTeacher() {
+  // لا نحتاج رنيناً للأستاذ نفسه لأنه هو من بدأ الحصة
+  // لكن نحدّث القائمة تلقائياً
+}
+
+/* ============================================================
    تشغيل
    ============================================================ */
 loadQuestions();
@@ -874,8 +983,10 @@ renderPollBuilder();
 setInterval(loadQuestions, 30000);
 setInterval(loadLiveSessions, 60000);
 
+window.addEventListener('beforeunload', () => { stopRingtone(); });
+
 /* ============================================================
-   تفعيل الإشعارات - طلب إذن + اشتراك
+   تفعيل Push تلقائياً للأستاذ
    ============================================================ */
 (async function initPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -895,14 +1006,16 @@ setInterval(loadLiveSessions, 60000);
     setTimeout(async () => {
       if (Notification.permission === 'granted') {
         const u = JSON.parse(localStorage.getItem('user') || 'null');
-        if (u && u.id) await PushClient.subscribeToPush(u.id);
+        if (u && u.id && window.PushClient) {
+          await PushClient.subscribeToPush(u.id);
+        }
       } else if (Notification.permission !== 'denied') {
         const box = document.createElement('div');
-        box.style.cssText = 'position:fixed; bottom:80px; left:16px; right:16px; background:linear-gradient(135deg,#fef3c7,#fde68a); border:3px solid #f59e0b; border-radius:18px; padding:16px; z-index:3000; box-shadow:0 10px 30px rgba(245,158,11,.3); text-align:center;';
+        box.style.cssText = 'position:fixed; bottom:100px; left:16px; right:16px; background:linear-gradient(135deg,#fef3c7,#fde68a); border:3px solid #f59e0b; border-radius:18px; padding:16px; z-index:3000; box-shadow:0 10px 30px rgba(245,158,11,.3); text-align:center;';
         box.innerHTML = `
           <div style="font-weight:800; color:#78350f; margin-bottom:10px; font-size:1rem">🔔 فعّل الإشعارات</div>
           <div style="font-size:.85rem; color:#92400e; margin-bottom:12px; line-height:1.6">
-            لتصلك إشعارات الحصص المباشرة والامتحانات فوراً، حتى لو كان التطبيق مغلقاً.
+            لتصلك إشعارات المكالمات والردود فوراً.
           </div>
           <button id="enable-push-btn" style="background:linear-gradient(180deg,#f59e0b,#d97706); padding:12px 24px; border-radius:12px; color:#fff; font-weight:800; border:none; box-shadow:0 4px 0 #92400e; cursor:pointer">
             ✅ تفعيل الآن
@@ -914,14 +1027,15 @@ setInterval(loadLiveSessions, 60000);
         document.getElementById('enable-push-btn').onclick = async () => {
           const u = JSON.parse(localStorage.getItem('user') || 'null');
           if (!u || !u.id) return;
-          const ok = await PushClient.subscribeToPush(u.id);
-          if (ok) {
-            box.innerHTML = '<div style="font-weight:800; color:#065f46; font-size:1rem">✅ تم تفعيل الإشعارات!</div>';
-            setTimeout(() => box.remove(), 2000);
-          } else {
-            box.innerHTML = '<div style="font-weight:800; color:#991b1b; font-size:1rem">⚠️ تعذّر التفعيل</div>';
-            setTimeout(() => box.remove(), 4000);
+          const permission = await Notification.requestPermission();
+          if (permission !== 'granted') {
+            box.innerHTML = '<div style="font-weight:800; color:#991b1b">⚠️ لم يُمنح</div>';
+            setTimeout(() => box.remove(), 3000);
+            return;
           }
+          if (window.PushClient) await PushClient.subscribeToPush(u.id);
+          box.innerHTML = '<div style="font-weight:800; color:#065f46">✅ تم تفعيل الإشعارات!</div>';
+          setTimeout(() => box.remove(), 2000);
         };
         document.getElementById('dismiss-push-btn').onclick = () => box.remove();
       }
