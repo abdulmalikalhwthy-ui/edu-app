@@ -27,6 +27,7 @@
       <button id="tab-exams" type="button">📝 الامتحانات</button>
       <button id="tab-polls" type="button">📊 الاستطلاعات</button>
       <button id="tab-notifs" type="button">🔔 الإشعارات</button>
+      <button id="tab-calls" type="button">📞 المكالمات</button>
     </div>
 
     <div id="view-form">
@@ -63,10 +64,21 @@
         <div id="notifs-list" style="margin-top:14px"></div>
       </div>
     </div>
+
+    <div id="view-calls" style="display:none">
+      <div class="card">
+        <h2>📞 جهات الاتصال</h2>
+        <p style="font-size:.85rem;color:var(--text-light);margin-bottom:14px">
+          اختر شخصاً لبدء مكالمة صوتية أو مرئية
+        </p>
+        <div id="contacts-list"></div>
+      </div>
+    </div>
   </main>
 
   <script src="js/recorder.js"></script>
   <script src="js/push-client.js"></script>
+  <script src="js/calls.js"></script>
   <script src="js/student.js"></script>
 </body>
 </html>
