@@ -1,5 +1,5 @@
 /* ============================================================
-   calls.js — نظام المكالمات الصوتية والمرئية
+   calls.js — نظام المكالمات (بدون خطوات وسيطة)
    ============================================================ */
 
 (function() {
@@ -12,7 +12,47 @@
   let incomingCallModal = null;
 
   /* ============================================================
-     تشغيل رنين المكالمة
+     بناء رابط Jitsi مباشر — بدون شاشات وسيطة
+     ============================================================ */
+  function buildJitsiLink(roomLink, userName, callType) {
+    // إزالة البروتوكول لاستخدامه كـ fragment
+    // نضيف معاملات لتفعيل الدخول المباشر
+    const params = [
+      // تخطي شاشة "كيف تريد الانضمام؟"
+      'config.prejoinPageEnabled=false',
+      'config.prejoinConfig.enabled=false',
+
+      // الدخول مباشرة للمكالمة
+      'config.startWithAudioMuted=false',
+      'config.startWithVideoMuted=' + (callType === 'audio' ? 'true' : 'false'),
+
+      // تعيين اسم المستخدم تلقائياً
+      'userInfo.displayName="' + encodeURIComponent(userName || 'مستخدم') + '"',
+
+      // تخطي شاشة Lobby
+      'config.disableDeepLinking=true',
+
+      // عدم طلب اسم قبل الدخول
+      'config.requireDisplayName=false',
+
+      // إخفاء اللافتة "أنت المضيف"
+      'config.enableWelcomePage=false',
+
+      // تجاوز كلمة المرور إذا كانت مطلوبة
+      'config.enableLobbyChat=false',
+
+      // إخفاء الروابط الترويجية
+      'config.hideConferenceSubject=true',
+      'config.disableInviteFunctions=true',
+      'config.toolbarButtons=["camera","chat","closedcaptions","desktop","download","embedmeeting","etherpad","feedback","filmstrip","fullscreen","hangup","help","highlight","invite","linktos","microphone","noisesuppression","participants-pane","profile","raisehand","recording","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality","whiteboard"]'
+    ];
+
+    // استخدام # للإعدادات
+    return roomLink + '#' + params.join('&');
+  }
+
+  /* ============================================================
+     رنين المكالمة
      ============================================================ */
   function startCallRingtone() {
     try {
@@ -38,10 +78,7 @@
 
   function stopCallRingtone() {
     if (callRingtone) {
-      try {
-        callRingtone.pause();
-        callRingtone.currentTime = 0;
-      } catch (e) {}
+      try { callRingtone.pause(); callRingtone.currentTime = 0; } catch (e) {}
     }
     if (navigator.vibrate) navigator.vibrate(0);
   }
@@ -132,23 +169,24 @@
   }
 
   /* ============================================================
-     قبول المكالمة
+     قبول المكالمة — فتح Jitsi مباشرة بدون خطوات
      ============================================================ */
   async function acceptCall(call) {
     try {
       await fetch(`/api/calls/${call.id}/answer`, { method: 'POST' });
-      openCallRoom(call);
+
+      // بناء رابط Jitsi مباشر
+      const directLink = buildJitsiLink(
+        call.room_link,
+        currentUser.name,
+        call.call_type || 'video'
+      );
+
+      // فتح الرابط
+      const w = window.open(directLink, '_blank');
+      if (!w) window.location.href = directLink;
     } catch (e) {
       console.error('Accept error:', e);
-    }
-  }
-
-  function openCallRoom(call) {
-    const url = call.room_link;
-    if (!url) return;
-    const w = window.open(url, '_blank');
-    if (!w) {
-      window.location.href = url;
     }
   }
 
@@ -192,12 +230,19 @@
         activeCall = null;
       };
 
+      // فتح Jitsi مباشرة بعد 2 ثانية (وقت وصول الإشعار للطرف الآخر)
       setTimeout(() => {
         callingModal.remove();
         if (activeCall) {
-          openCallRoom({ room_link: data.room_link });
+          const directLink = buildJitsiLink(
+            data.room_link,
+            currentUser.name,
+            callType
+          );
+          const w = window.open(directLink, '_blank');
+          if (!w) window.location.href = directLink;
         }
-      }, 1500);
+      }, 2000);
 
     } catch (e) {
       console.error('Start call error:', e);
@@ -272,13 +317,14 @@
     } catch (e) {}
   }
 
-  pendingCallCheck = setInterval(checkPendingCalls, 8000);
-  setTimeout(checkPendingCalls, 2000);
+  pendingCallCheck = setInterval(checkPendingCalls, 6000);
+  setTimeout(checkPendingCalls, 1500);
 
   window.CallsApp = {
     loadContacts,
     startCall,
     acceptCall,
-    stopCallRingtone
+    stopCallRingtone,
+    buildJitsiLink
   };
 })();
