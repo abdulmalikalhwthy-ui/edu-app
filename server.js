@@ -208,7 +208,7 @@ app.post('/api/calls/initiate', async (req, res) => {
   `).run(from_user_id, to_user_id);
 
   const roomName = 'edu-call-' + from_user_id + '-' + to_user_id + '-' + Date.now().toString(36);
-  const roomLink = 'https://meet.jit.si/' + roomName;
+  const baseLink = 'https://meet.jit.si/' + roomName;
 
   const fromUser = db.prepare(`SELECT name FROM users WHERE id = ?`).get(from_user_id);
   const toUser = db.prepare(`SELECT name FROM users WHERE id = ?`).get(to_user_id);
@@ -217,7 +217,7 @@ app.post('/api/calls/initiate', async (req, res) => {
     const info = db.prepare(`
       INSERT INTO calls (from_user_id, to_user_id, room_name, room_link, call_type, status)
       VALUES (?, ?, ?, ?, ?, 'ringing')
-    `).run(from_user_id, to_user_id, roomName, roomLink, call_type || 'video');
+    `).run(from_user_id, to_user_id, roomName, baseLink, call_type || 'video');
 
     db.prepare(`
       INSERT INTO notifications (student_id, type, message, related_id)
@@ -229,7 +229,7 @@ app.post('/api/calls/initiate', async (req, res) => {
       body: `${fromUser?.name || 'مستخدم'} يتصل بك الآن`,
       type: 'call',
       url: '/',
-      room_link: roomLink,
+      room_link: baseLink,
       call_id: info.lastInsertRowid,
       from_user_id,
       call_type: call_type || 'video'
@@ -237,8 +237,11 @@ app.post('/api/calls/initiate', async (req, res) => {
 
     res.json({
       id: info.lastInsertRowid,
-      room_link: roomLink,
+      room_link: baseLink,
       room_name: roomName,
+      from_user_name: fromUser?.name || '',
+      to_user_name: toUser?.name || '',
+      call_type: call_type || 'video',
       ok: true
     });
   } catch (e) {
