@@ -1,7 +1,5 @@
 /* ============================================================
-   student.js — شاشة الطالب الكاملة
-   يشمل: صياغة السؤال، الأسئلة، الامتحانات، الاستطلاعات،
-          الإشعارات، التنبيه بالحصص المباشرة، والرنين القوي
+   student.js — شاشة الطالب الكاملة (مع المكالمات)
    ============================================================ */
 
 const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -41,7 +39,6 @@ function startRingtone() {
   ringtoneActive = true;
 
   try {
-    // إنشاء عنصر الصوت مرة واحدة
     if (!ringtoneAudio) {
       ringtoneAudio = new Audio('/ring.mp3');
       ringtoneAudio.loop = true;
@@ -49,12 +46,10 @@ function startRingtone() {
       ringtoneAudio.preload = 'auto';
     }
 
-    // محاولة التشغيل
     const playPromise = ringtoneAudio.play();
     if (playPromise) {
       playPromise.catch(err => {
-        console.warn('الصوت محظور من المتصفح - ينتظر تفاعل المستخدم');
-        // محاولة التشغيل عند أول نقرة
+        console.warn('الصوت محظور');
         const unlock = () => {
           if (ringtoneActive && ringtoneAudio) {
             ringtoneAudio.play().catch(() => {});
@@ -67,16 +62,12 @@ function startRingtone() {
       });
     }
 
-    // اهتزاز متكرر
     const vibrate = () => {
-      if (navigator.vibrate) {
-        navigator.vibrate([800, 200, 800, 200, 800]);
-      }
+      if (navigator.vibrate) navigator.vibrate([800, 200, 800, 200, 800]);
     };
     vibrate();
     ringtoneVibrateLoop = setInterval(vibrate, 1800);
 
-    // زر إيقاف الرنين
     showStopRingButton();
   } catch (e) {
     console.error('Ring error:', e);
@@ -107,27 +98,14 @@ function showStopRingButton() {
   btn.type = 'button';
   btn.innerHTML = '🔕 إيقاف الرنين';
   btn.style.cssText = `
-    position: fixed;
-    bottom: 30px;
-    left: 50%;
-    transform: translateX(-50%);
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
     background: linear-gradient(180deg, #ef4444, #b91c1c);
-    color: #fff;
-    font-weight: 900;
-    font-size: 1.05rem;
-    padding: 16px 32px;
-    border-radius: 50px;
-    border: 3px solid #fff;
+    color: #fff; font-weight: 900; font-size: 1.05rem;
+    padding: 16px 32px; border-radius: 50px; border: 3px solid #fff;
     box-shadow: 0 10px 40px rgba(220, 38, 38, 0.6), 0 0 0 6px rgba(220, 38, 38, 0.2);
-    z-index: 99999;
-    cursor: pointer;
-    animation: ringPulse 1s infinite;
-    font-family: inherit;
+    z-index: 99999; cursor: pointer; animation: ringPulse 1s infinite; font-family: inherit;
   `;
-  btn.onclick = (e) => {
-    e.stopPropagation();
-    stopRingtone();
-  };
+  btn.onclick = (e) => { e.stopPropagation(); stopRingtone(); };
   document.body.appendChild(btn);
 }
 
@@ -136,27 +114,19 @@ function hideStopRingButton() {
   if (btn) btn.remove();
 }
 
-// إضافة CSS للرنين
 (function addRingStyles() {
   if (document.getElementById('ring-styles')) return;
   const style = document.createElement('style');
   style.id = 'ring-styles';
   style.textContent = `
     @keyframes ringPulse {
-      0%, 100% {
-        transform: translateX(-50%) scale(1);
-        box-shadow: 0 10px 40px rgba(220, 38, 38, 0.6), 0 0 0 6px rgba(220, 38, 38, 0.2);
-      }
-      50% {
-        transform: translateX(-50%) scale(1.08);
-        box-shadow: 0 10px 50px rgba(220, 38, 38, 0.9), 0 0 0 14px rgba(220, 38, 38, 0.35);
-      }
+      0%, 100% { transform: translateX(-50%) scale(1); box-shadow: 0 10px 40px rgba(220, 38, 38, 0.6), 0 0 0 6px rgba(220, 38, 38, 0.2); }
+      50% { transform: translateX(-50%) scale(1.08); box-shadow: 0 10px 50px rgba(220, 38, 38, 0.9), 0 0 0 14px rgba(220, 38, 38, 0.35); }
     }
   `;
   document.head.appendChild(style);
 })();
 
-// إتاحة الإيقاف عالمياً
 window.stopRingtone = stopRingtone;
 
 /* ============================================================
@@ -216,7 +186,6 @@ async function buildForm() {
     <div id="form-status" style="text-align:center; margin-top:8px"></div>
   `);
 
-  // أزرار التسجيل الصوتي
   form.querySelectorAll('.btn-toggle-audio').forEach(btn => {
     btn.onclick = () => {
       const key = btn.dataset.key;
@@ -237,7 +206,6 @@ async function buildForm() {
     };
   });
 
-  // أزرار البحث
   form.querySelectorAll('.btn-search').forEach(btn => {
     btn.onclick = () => {
       const key = btn.dataset.key;
@@ -304,9 +272,6 @@ async function submitQuestion(e) {
         });
         loadMyQuestions();
       }, 800);
-    } else {
-      status.textContent = '❌ ' + (data.error || 'فشل');
-      status.style.color = 'var(--danger)';
     }
   } catch (err) {
     status.textContent = '❌ فشل الإرسال';
@@ -380,7 +345,6 @@ async function loadExams() {
       <div class="meta">👨‍🏫 ${exam.teacher_name}</div>
       ${exam.class_name ? `<div class="meta">📚 ${exam.class_name}</div>` : ''}
       <div class="meta">⏱️ ${exam.duration_minutes} دقيقة — 🎯 ${exam.total_points} نقطة</div>
-      ${exam.description ? `<div class="meta">${exam.description}</div>` : ''}
       ${attempt ? `<div class="meta" style="color:var(--success);font-weight:900">🏆 نتيجتك: ${attempt.score} / ${attempt.max_score}</div>` : ''}
       <button class="btn-submit start-exam" data-id="${exam.id}" type="button" style="margin-top:10px" ${attempt ? 'disabled' : ''}>
         ${attempt ? '✅ تم التقديم' : '🚀 بدء الامتحان'}
@@ -392,7 +356,7 @@ async function loadExams() {
 }
 
 async function startExam(examId) {
-  if (!confirm('هل أنت مستعد لبدء الامتحان؟ سيبدأ العد التنازلي فوراً.')) return;
+  if (!confirm('هل أنت مستعد لبدء الامتحان؟')) return;
 
   const r = await fetch('/api/exams/' + examId);
   const exam = await r.json();
@@ -404,7 +368,7 @@ async function startExam(examId) {
   exam.questions.forEach((q, i) => {
     let optionsHtml = '';
     if (q.question_type === 'mcq') {
-      optionsHtml = (q.options || []).map((opt, oi) => `
+      optionsHtml = (q.options || []).map((opt) => `
         <label style="display:block; padding:10px; border:2px solid var(--border); border-radius:10px; margin-bottom:8px; cursor:pointer; background:#f8fafc">
           <input type="radio" name="q${q.id}" value="${opt}" style="margin-inline-end:8px">
           <b>${opt}</b>
@@ -462,7 +426,7 @@ async function startExam(examId) {
   const interval = setInterval(tick, 1000);
 
   backdrop.querySelector('#close-exam').onclick = () => {
-    if (!confirm('هل تريد إلغاء الامتحان؟ سيتم فقدان تقدمك.')) return;
+    if (!confirm('هل تريد إلغاء الامتحان؟')) return;
     clearInterval(interval);
     backdrop.remove();
   };
@@ -486,7 +450,6 @@ async function startExam(examId) {
 
     const status = backdrop.querySelector('#exam-status');
     status.textContent = '⏳ جاري التسليم...';
-    status.style.color = 'var(--text-light)';
 
     try {
       const r = await fetch(`/api/exams/${examId}/attempt`, {
@@ -512,13 +475,12 @@ async function startExam(examId) {
           backdrop.remove();
           loadExams();
         };
-        status.textContent = '';
       } else {
         status.textContent = '❌ ' + (data.error || 'فشل');
         status.style.color = 'var(--danger)';
       }
     } catch (e) {
-      status.textContent = '❌ خطأ في الاتصال';
+      status.textContent = '❌ خطأ';
       status.style.color = 'var(--danger)';
     }
   };
@@ -533,7 +495,7 @@ async function loadPolls() {
   const container = document.getElementById('polls-list');
 
   if (!list.length) {
-    container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا توجد استطلاعات نشطة</div>';
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">لا توجد استطلاعات</div>';
     return;
   }
 
@@ -558,7 +520,7 @@ async function loadPolls() {
 
     div.innerHTML = `
       <h3>📊 ${poll.question}
-        <span class="badge ${myVote ? 'answered' : 'pending'}">${myVote ? 'صوّتت' : 'شارك الآن'}</span>
+        <span class="badge ${myVote ? 'answered' : 'pending'}">${myVote ? 'صوّتت' : 'شارك'}</span>
       </h3>
       <div class="meta">👨‍🏫 ${poll.teacher_name}</div>
       <div style="margin-top:12px">${optionsHtml}</div>
@@ -569,19 +531,15 @@ async function loadPolls() {
     if (!myVote) {
       div.querySelector('.submit-poll').onclick = async () => {
         const sel = div.querySelector(`input[name="poll${poll.id}"]:checked`);
-        if (!sel) return showToast('اختر خياراً أولاً');
+        if (!sel) return showToast('اختر خياراً');
         const r = await fetch(`/api/polls/${poll.id}/vote`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ student_id: user.id, choice_index: parseInt(sel.value) })
         });
         const data = await r.json();
-        if (data.ok) {
-          showToast('✅ تم التصويت');
-          loadPolls();
-        } else {
-          showToast('❌ ' + (data.error || 'فشل'));
-        }
+        if (data.ok) { showToast('✅ تم'); loadPolls(); }
+        else showToast('❌ ' + (data.error || 'فشل'));
       };
     }
 
@@ -604,12 +562,10 @@ async function showPollResults(pollId) {
       <div style="margin-bottom:12px">
         <div style="display:flex; justify-content:space-between; margin-bottom:4px">
           <b>${r.label}</b>
-          <span style="color:var(--text-light)">${r.count} صوت (${pct}%)</span>
+          <span style="color:var(--text-light)">${r.count} (${pct}%)</span>
         </div>
         <div style="background:#e2e8f0; border-radius:10px; height:24px; overflow:hidden">
-          <div style="background:linear-gradient(90deg, #2563eb, #7c3aed); height:100%; width:${pct}%; transition:width .5s; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700">
-            ${pct > 15 ? pct + '%' : ''}
-          </div>
+          <div style="background:linear-gradient(90deg, #2563eb, #7c3aed); height:100%; width:${pct}%"></div>
         </div>
       </div>
     `;
@@ -618,9 +574,7 @@ async function showPollResults(pollId) {
   backdrop.innerHTML = `
     <div class="modal">
       <h2>📊 ${poll.question}</h2>
-      <p style="text-align:center;color:var(--text-light);margin-bottom:16px">
-        إجمالي الأصوات: <b>${total_votes}</b>
-      </p>
+      <p style="text-align:center;color:var(--text-light);margin-bottom:16px">إجمالي: <b>${total_votes}</b></p>
       ${bars}
       <button id="close-results" class="btn-danger" type="button" style="width:100%;margin-top:14px">إغلاق</button>
     </div>
@@ -662,9 +616,7 @@ async function loadNotifications() {
     div.className = 'question-item';
     div.style.opacity = n.is_read ? '0.6' : '1';
     div.innerHTML = `
-      <div style="font-size:.95rem; font-weight:600">
-        ${n.is_read ? '✓' : '🔴'} ${n.message}
-      </div>
+      <div style="font-size:.95rem; font-weight:600">${n.is_read ? '✓' : '🔴'} ${n.message}</div>
       <div class="meta">📅 ${new Date(n.created_at).toLocaleString('ar-EG')}</div>
     `;
     container.appendChild(div);
@@ -679,7 +631,7 @@ if (readAllBtn) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ student_id: user.id })
     });
-    showToast('✅ تم تحديد الكل');
+    showToast('✅ تم');
     loadNotifications();
   };
 }
@@ -700,7 +652,7 @@ const enableNotifBtn = document.getElementById('enable-notifications');
 async function updateEnableBtn() {
   if (!enableNotifBtn) return;
   if (!('Notification' in window)) {
-    enableNotifBtn.textContent = '🔕 غير مدعوم';
+    enableNotifBtn.textContent = '🔕';
     return;
   }
   if (Notification.permission === 'granted') {
@@ -713,8 +665,7 @@ async function updateEnableBtn() {
         return;
       }
     } catch (e) {}
-    enableNotifBtn.textContent = '⚠️ تفعيل جزئي';
-    enableNotifBtn.style.background = 'rgba(245,158,11,.5)';
+    enableNotifBtn.textContent = '⚠️ جزئي';
   } else if (Notification.permission === 'denied') {
     enableNotifBtn.textContent = '❌ محظور';
     enableNotifBtn.style.background = 'rgba(239,68,68,.5)';
@@ -727,48 +678,25 @@ updateEnableBtn();
 if (enableNotifBtn) {
   enableNotifBtn.onclick = async (e) => {
     e.preventDefault();
-
-    if (!('Notification' in window)) {
-      return showToast('⚠️ الإشعارات غير مدعومة');
-    }
-
+    if (!('Notification' in window)) return showToast('⚠️ غير مدعوم');
     if (Notification.permission === 'denied') {
-      alert('⚠️ أنت محظور من الإشعارات.\n\n' +
-        'افتح إعدادات Chrome:\n' +
-        '1. اضغط على القفل 🔒 بجانب الرابط\n' +
-        '2. الإعدادات → الإشعارات\n' +
-        '3. اختر "اسمح"\n' +
-        '4. أعد تحميل الصفحة');
+      alert('⚠️ محظور\n\nافتح إعدادات Chrome:\n🔒 → الإعدادات → الإشعارات → اسمح');
       return;
     }
-
     enableNotifBtn.textContent = '⏳...';
-
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
         enableNotifBtn.textContent = '🔔 تفعيل';
-        return showToast('❌ لم يتم منح الإذن');
+        return showToast('❌');
       }
-
-      if (window.PushClient && window.PushClient.subscribeToPush) {
-        const ok = await PushClient.subscribeToPush(user.id);
-        if (ok) {
-          enableNotifBtn.textContent = '✅ مفعّل';
-          enableNotifBtn.style.background = 'rgba(16,185,129,.5)';
-          showToast('✅ تم تفعيل الإشعارات');
-        } else {
-          enableNotifBtn.textContent = '✅ مفعّل';
-          enableNotifBtn.style.background = 'rgba(16,185,129,.5)';
-          showToast('✅ تم منح الإذن');
-        }
-      } else {
-        enableNotifBtn.textContent = '✅ مفعّل';
-        enableNotifBtn.style.background = 'rgba(16,185,129,.5)';
-        showToast('✅ تم منح الإذن');
+      if (window.PushClient) {
+        await PushClient.subscribeToPush(user.id);
       }
+      enableNotifBtn.textContent = '✅ مفعّل';
+      enableNotifBtn.style.background = 'rgba(16,185,129,.5)';
+      showToast('✅ تم التفعيل');
     } catch (err) {
-      console.error(err);
       enableNotifBtn.textContent = '🔔 تفعيل';
       showToast('❌ ' + err.message);
     }
@@ -776,7 +704,7 @@ if (enableNotifBtn) {
 }
 
 /* ============================================================
-   التنبيه بالحصة المباشرة (مع رنين)
+   التنبيه بالحصة + الرنين
    ============================================================ */
 async function checkLiveSessions() {
   try {
@@ -786,11 +714,10 @@ async function checkLiveSessions() {
 
     if (sessions.length > 0) {
       const latest = sessions[0];
-
       if (alertBox) {
         alertBox.style.display = 'block';
         alertBox.innerHTML = `
-          <span>🔴 <b>${latest.title}</b> — بدأ الأستاذ ${latest.teacher_name} حصة مباشرة الآن!</span>
+          <span>🔴 <b>${latest.title}</b> — بدأ الأستاذ ${latest.teacher_name} حصة مباشرة!</span>
           <a href="${latest.room_link}${latest.password ? '#config.callPassword=' + encodeURIComponent(latest.password) : ''}" target="_blank"
              class="btn-submit" style="display:block; text-decoration:none; text-align:center; margin-top:10px; padding:12px"
              onclick="if(window.stopRingtone) window.stopRingtone();">
@@ -800,14 +727,10 @@ async function checkLiveSessions() {
         `;
       }
 
-      // حصة جديدة → تشغيل الرنين
       if (latest.id !== lastNotifiedSessionId) {
         lastNotifiedSessionId = latest.id;
-
-        // ✅ رنين قوي متكرر
         startRingtone();
 
-        // إشعار النظام
         if ('Notification' in window && Notification.permission === 'granted') {
           try {
             const reg = await navigator.serviceWorker.getRegistration();
@@ -822,7 +745,6 @@ async function checkLiveSessions() {
                 renotify: true,
                 dir: 'rtl',
                 lang: 'ar',
-                silent: false,
                 data: {
                   url: latest.room_link + (latest.password ? '#config.callPassword=' + encodeURIComponent(latest.password) : ''),
                   type: 'live_session',
@@ -835,28 +757,21 @@ async function checkLiveSessions() {
                 ]
               });
             }
-          } catch (e) {
-            console.error('Notification error:', e);
-          }
+          } catch (e) {}
         }
       }
     } else {
-      // لا حصص نشطة
       if (alertBox) alertBox.style.display = 'none';
-      if (lastNotifiedSessionId !== null) {
-        stopRingtone();
-      }
+      if (lastNotifiedSessionId !== null) stopRingtone();
       lastNotifiedSessionId = null;
     }
-  } catch (e) {
-    console.error('checkLiveSessions error:', e);
-  }
+  } catch (e) {}
 }
 
 /* ============================================================
    التبويبات
    ============================================================ */
-const tabs = ['form', 'list', 'exams', 'polls', 'notifs'];
+const tabs = ['form', 'list', 'exams', 'polls', 'notifs', 'calls'];
 tabs.forEach(t => {
   const tabEl = document.getElementById('tab-' + t);
   if (!tabEl) return;
@@ -871,6 +786,9 @@ tabs.forEach(t => {
     if (t === 'exams') loadExams();
     if (t === 'polls') loadPolls();
     if (t === 'notifs') loadNotifications();
+    if (t === 'calls' && window.CallsApp) {
+      window.CallsApp.loadContacts(document.getElementById('contacts-list'));
+    }
   };
 });
 
@@ -880,12 +798,7 @@ if (refreshExamsBtn) refreshExamsBtn.onclick = loadExams;
 const refreshPollsBtn = document.getElementById('refresh-polls');
 if (refreshPollsBtn) refreshPollsBtn.onclick = loadPolls;
 
-/* ============================================================
-   إيقاف الرنين عند إغلاق الصفحة
-   ============================================================ */
-window.addEventListener('beforeunload', () => {
-  stopRingtone();
-});
+window.addEventListener('beforeunload', () => { stopRingtone(); });
 
 /* ============================================================
    تشغيل
@@ -898,22 +811,15 @@ setInterval(loadNotifications, 30000);
 setInterval(checkLiveSessions, 20000);
 
 /* ============================================================
-   تفعيل الإشعارات تلقائياً
+   تفعيل Push تلقائياً
    ============================================================ */
 (async function initPush() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    console.warn('Push غير مدعوم');
-    return;
-  }
-
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
   try {
     await navigator.serviceWorker.ready;
     const reg = await navigator.serviceWorker.ready;
     const existing = await reg.pushManager.getSubscription();
-    if (existing) {
-      console.log('✅ اشتراك push موجود');
-      return;
-    }
+    if (existing) return;
 
     setTimeout(async () => {
       if (Notification.permission === 'granted') {
@@ -927,12 +833,12 @@ setInterval(checkLiveSessions, 20000);
         box.innerHTML = `
           <div style="font-weight:800; color:#78350f; margin-bottom:10px; font-size:1rem">🔔 فعّل الإشعارات</div>
           <div style="font-size:.85rem; color:#92400e; margin-bottom:12px; line-height:1.6">
-            لتصلك إشعارات الحصص المباشرة والامتحانات فوراً، حتى لو كان التطبيق مغلقاً.
+            لتصلك إشعارات الحصص المباشرة والامتحانات فوراً.
           </div>
           <button id="enable-push-btn" style="background:linear-gradient(180deg,#f59e0b,#d97706); padding:12px 24px; border-radius:12px; color:#fff; font-weight:800; border:none; box-shadow:0 4px 0 #92400e; cursor:pointer">
             ✅ تفعيل الآن
           </button>
-          <button id="dismiss-push-btn" style="background:transparent; border:none; color:#92400e; margin-top:8px; cursor:pointer; font-size:.85rem; font-weight:600">لاحقاً</button>
+          <button id="dismiss-push-btn" style="background:transparent; border:none; color:#92400e; margin-top:8px; cursor:pointer; font-size:.85rem">لاحقاً</button>
         `;
         document.body.appendChild(box);
 
@@ -941,21 +847,17 @@ setInterval(checkLiveSessions, 20000);
           if (!u || !u.id) return;
           const permission = await Notification.requestPermission();
           if (permission !== 'granted') {
-            box.innerHTML = '<div style="font-weight:800; color:#991b1b">⚠️ لم يُمنح الإذن</div>';
+            box.innerHTML = '<div style="font-weight:800; color:#991b1b">⚠️ لم يُمنح</div>';
             setTimeout(() => box.remove(), 3000);
             return;
           }
-          if (window.PushClient) {
-            await PushClient.subscribeToPush(u.id);
-          }
-          box.innerHTML = '<div style="font-weight:800; color:#065f46">✅ تم تفعيل الإشعارات!</div>';
+          if (window.PushClient) await PushClient.subscribeToPush(u.id);
+          box.innerHTML = '<div style="font-weight:800; color:#065f46">✅ تم!</div>';
           setTimeout(() => box.remove(), 2000);
           updateEnableBtn();
         };
         document.getElementById('dismiss-push-btn').onclick = () => box.remove();
       }
     }, 2500);
-  } catch (e) {
-    console.error('Push init error:', e);
-  }
+  } catch (e) {}
 })();
