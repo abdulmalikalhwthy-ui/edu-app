@@ -1,5 +1,5 @@
 /* ============================================================
-   server.js — المنصة التعليمية الكاملة مع Push Notifications
+   server.js — المنصة التعليمية الكاملة
    ============================================================ */
 
 const express = require('express');
@@ -50,12 +50,12 @@ function initVapid() {
       console.log('✅ VAPID keys جاهزة');
     }
   } catch (e) {
-    console.error('❌ خطأ في تهيئة VAPID:', e);
+    console.error('❌ خطأ VAPID:', e);
   }
 }
 initVapid();
 
-/* ====================== إرسال Push ====================== */
+/* ====================== Push Helpers ====================== */
 async function sendPushToUser(userId, payload) {
   const subs = db.prepare(`SELECT * FROM push_subscriptions WHERE user_id = ?`).all(userId);
   const promises = subs.map(async (s) => {
@@ -82,7 +82,6 @@ async function sendPushToAllStudents(payload, classId) {
   } else {
     students = db.prepare(`SELECT id FROM users WHERE role = 'student'`).all();
   }
-
   const results = [];
   for (const s of students) {
     const r = await sendPushToUser(s.id, payload);
@@ -171,6 +170,156 @@ app.post('/api/push/test', async (req, res) => {
     url: '/student.html'
   });
   res.json({ results });
+});
+
+/* ====================== المكالمات ====================== */
+app.get('/api/contacts', (req, res) => {
+  const { user_id, role } = req.query;
+  if (!user_id) return res.status(400).json({ error: 'user_id مطلوب' });
+
+  let rows;
+  if (role === 'teacher') {
+    rows = db.prepare(`
+      SELECT DISTINCT id, name, email, role, created_at
+      FROM users
+      WHERE role = 'student' AND id != ?
+      ORDER BY name ASC
+    `).all(user_id);
+  } else {
+    rows = db.prepare(`
+      SELECT DISTINCT id, name, email, role, created_at
+      FROM users
+      WHERE id != ?
+      ORDER BY role DESC, name ASC
+    `).all(user_id);
+  }
+  res.json(rows);
+});
+
+app.post('/api/calls/initiate', async (req, res) => {
+  const { from_user_id, to_user_id, call_type } = req.body;
+  if (!from_user_id || !to_user_id) {
+    return res.status(400).json({ error: 'بيانات ناقصة' });
+  }
+
+  db.prepare(`
+    UPDATE calls SET status = 'missed', ended_at = CURRENT_TIMESTAMP
+    WHERE status = 'ringing' AND (from_user_id = ? OR to_user_id = ?)
+  `).run(from_user_id, to_user_id);
+
+  const roomName = 'edu-call-' + from_user_id + '-' + to_user_id + '-' + Date.now().toString(36);
+  const roomLink = 'https://meet.jit.si/' + roomName;
+
+  const fromUser = db.prepare(`SELECT name FROM users WHERE id = ?`).get(from_user_id);
+  const toUser = db.prepare(`SELECT name FROM users WHERE id = ?`).get(to_user_id);
+
+  try {
+    const info = db.prepare(`
+      INSERT INTO calls (from_user_id, to_user_id, room_name, room_link, call_type, status)
+      VALUES (?, ?, ?, ?, ?, 'ringing')
+    `).run(from_user_id, to_user_id, roomName, roomLink, call_type || 'video');
+
+    db.prepare(`
+      INSERT INTO notifications (student_id, type, message, related_id)
+      VALUES (?, 'call', ?, ?)
+    `).run(to_user_id, `📞 مكالمة ${call_type === 'audio' ? 'صوتية' : 'مرئية'} من ${fromUser?.name || 'مستخدم'}`, info.lastInsertRowid);
+
+    sendPushToUser(to_user_id, {
+      title: '📞 مكالمة واردة',
+      body: `${fromUser?.name || 'مستخدم'} يتصل بك الآن`,
+      type: 'call',
+      url: '/',
+      room_link: roomLink,
+      call_id: info.lastInsertRowid,
+      from_user_id,
+      call_type: call_type || 'video'
+    }).catch(e => console.error('Call push error:', e));
+
+    res.json({
+      id: info.lastInsertRowid,
+      room_link: roomLink,
+      room_name: roomName,
+      ok: true
+    });
+  } catch (e) {
+    console.error('Call initiate error:', e);
+    res.status(500).json({ error: 'فشل الإنشاء' });
+  }
+});
+
+app.get('/api/calls/pending', (req, res) => {
+  const { user_id } = req.query;
+  if (!user_id) return res.status(400).json({ error: 'user_id مطلوب' });
+
+  const rows = db.prepare(`
+    SELECT c.*, u.name AS from_user_name, u.email AS from_user_email
+    FROM calls c
+    JOIN users u ON u.id = c.from_user_id
+    WHERE c.to_user_id = ? AND c.status = 'ringing'
+      AND c.created_at > datetime('now', '-60 seconds')
+    ORDER BY c.created_at DESC
+    LIMIT 1
+  `).all(user_id);
+
+  res.json(rows);
+});
+
+app.post('/api/calls/:id/answer', (req, res) => {
+  const id = parseInt(req.params.id);
+  if (!id) return res.status(400).json({ error: 'معرّف غير صالح' });
+
+  db.prepare(`
+    UPDATE calls SET status = 'active', answered_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(id);
+
+  const call = db.prepare(`SELECT * FROM calls WHERE id = ?`).get(id);
+  res.json({ ok: true, call });
+});
+
+app.post('/api/calls/:id/reject', (req, res) => {
+  const id = parseInt(req.params.id);
+  if (!id) return res.status(400).json({ error: 'معرّف غير صالح' });
+
+  db.prepare(`
+    UPDATE calls SET status = 'rejected', ended_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(id);
+
+  res.json({ ok: true });
+});
+
+app.post('/api/calls/:id/end', (req, res) => {
+  const id = parseInt(req.params.id);
+  if (!id) return res.status(400).json({ error: 'معرّف غير صالح' });
+
+  db.prepare(`
+    UPDATE calls SET status = 'ended', ended_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(id);
+
+  res.json({ ok: true });
+});
+
+app.get('/api/calls/current', (req, res) => {
+  const { user_id } = req.query;
+  if (!user_id) return res.status(400).json({ error: 'user_id مطلوب' });
+
+  const call = db.prepare(`
+    SELECT c.*, 
+      u1.name AS from_user_name,
+      u2.name AS to_user_name
+    FROM calls c
+    JOIN users u1 ON u1.id = c.from_user_id
+    JOIN users u2 ON u2.id = c.to_user_id
+    WHERE (c.from_user_id = ? OR c.to_user_id = ?)
+      AND c.status IN ('ringing', 'active')
+      AND c.created_at > datetime('now', '-5 minutes')
+    ORDER BY c.created_at DESC
+    LIMIT 1
+  `).get(user_id, user_id);
+
+  res.json(call || null);
 });
 
 /* ====================== رفع الملفات ====================== */
@@ -709,6 +858,7 @@ app.get('/api/stats', (req, res) => {
     const examCount = db.prepare(`SELECT COUNT(*) AS c FROM exams`).get().c;
     const pollCount = db.prepare(`SELECT COUNT(*) AS c FROM polls WHERE status = 'active'`).get().c;
     const pushCount = db.prepare(`SELECT COUNT(*) AS c FROM push_subscriptions`).get().c;
+    const callsCount = db.prepare(`SELECT COUNT(*) AS c FROM calls`).get().c;
 
     const topStudents = db.prepare(`SELECT u.name, COUNT(q.id) AS count
       FROM users u LEFT JOIN questions q ON q.student_id = u.id
@@ -720,7 +870,7 @@ app.get('/api/stats', (req, res) => {
       students: totalStudents, allowed_students: allowedCount, classes: classCount,
       recordings: recordingsCount, recordings_size: recordingsSize,
       live_sessions: liveCount, exams: examCount, polls: pollCount,
-      push_subscriptions: pushCount,
+      push_subscriptions: pushCount, calls: callsCount,
       top_students: topStudents
     });
   } catch (e) {
@@ -739,6 +889,7 @@ app.get('/api/backup', (req, res) => {
   res.download(dbPath, `eduapp-backup-${new Date().toISOString().slice(0, 10)}.db`);
 });
 
+/* ====================== معالجة الأخطاء ====================== */
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
   if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'الملف كبير' });
