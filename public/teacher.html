@@ -28,6 +28,7 @@
       <button id="tab-classes" type="button">📚 الفصول</button>
       <button id="tab-search" type="button">🔎 البحث</button>
       <button id="tab-stats" type="button">📈 الإحصائيات</button>
+      <button id="tab-calls" type="button">📞 المكالمات</button>
     </div>
 
     <div id="view-questions">
@@ -196,10 +197,21 @@
     <div id="view-stats" style="display:none">
       <div id="stats-content"></div>
     </div>
+
+    <div id="view-calls" style="display:none">
+      <div class="card">
+        <h2>📞 جهات الاتصال</h2>
+        <p style="font-size:.85rem;color:var(--text-light);margin-bottom:14px">
+          اختر طالباً لبدء مكالمة صوتية أو مرئية
+        </p>
+        <div id="contacts-list"></div>
+      </div>
+    </div>
   </main>
 
   <script src="js/recorder.js"></script>
   <script src="js/push-client.js"></script>
+  <script src="js/calls.js"></script>
   <script src="js/teacher.js"></script>
 </body>
 </html>
